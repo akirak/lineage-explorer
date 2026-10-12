@@ -3,8 +3,12 @@ export type JobNode = {
   type: 'job';
   namespace: string;
   name: string;
-  state: string | null;
-  lastEventTime: string | null;
+};
+
+export type DatasetField = {
+  name: string;
+  type: string | null;
+  description: string | null;
 };
 
 export type DatasetNode = {
@@ -12,28 +16,37 @@ export type DatasetNode = {
   type: 'dataset';
   namespace: string;
   name: string;
+  fields: DatasetField[];
 };
 
 export type LineageNode = JobNode | DatasetNode;
 
+/** Table-level edge: dataset -> job (input) or job -> dataset (output). */
 export type LineageEdge = {
   id: string;
   source: string;
   target: string;
 };
 
+/** Column-level edge from an input field to an output field (OpenLineage columnLineage facet). */
+export type ColumnEdge = {
+  id: string;
+  source: string;
+  sourceField: string;
+  target: string;
+  targetField: string;
+  /** Job that produces the output field, if known. */
+  job: string | null;
+  /** DIRECT or INDIRECT. */
+  transformationType: string | null;
+  /** IDENTITY, TRANSFORMATION, AGGREGATION, JOIN, FILTER, ... */
+  transformationSubtype: string | null;
+};
+
 export type Graph = {
   nodes: LineageNode[];
   edges: LineageEdge[];
-};
-
-export type JobRun = {
-  run_id: string;
-  parent_run_id: string | null;
-  state: string | null;
-  started_at: string | null;
-  last_event_at: string | null;
-  duration_ms: number | string | null;
+  columnEdges: ColumnEdge[];
 };
 
 export type ApiError = {

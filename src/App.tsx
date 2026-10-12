@@ -7,21 +7,23 @@ import {
   MiniMap,
   MarkerType,
   useReactFlow,
+  type Edge,
 } from '@xyflow/react';
-import { fetchGraph, fetchJobRuns } from './api.js';
-import { layoutNodes, traverse, NODE_W, NODE_H } from './layout.js';
-import { nodeTypes, STATE_LABEL, stateKey } from './nodes.jsx';
+import type { Graph, JobRun, LineageNode } from '../shared/types.ts';
+import { fetchGraph, fetchJobRuns } from './api.ts';
+import { layoutNodes, traverse, NODE_W, NODE_H } from './layout.ts';
+import { nodeTypes, STATE_LABEL, stateKey, type LineageFlowNode, type Role } from './nodes.tsx';
 
 const EDGE_IDLE = '#9aa6a9';
 const EDGE_ACTIVE = '#0d6b62';
 
-function formatTime(iso) {
+function formatTime(iso: string | null) {
   if (!iso) return '—';
   const d = new Date(iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z');
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
 
-function formatDuration(value) {
+function formatDuration(value: JobRun['duration_ms']) {
   if (value == null) return '—';
   const ms = Number(value);
   if (ms < 1000) return `${ms} ms`;
@@ -32,12 +34,12 @@ function formatDuration(value) {
 
 function Explorer() {
   const { setCenter, fitView } = useReactFlow();
-  const [graph, setGraph] = useState(null);
-  const [error, setError] = useState(null);
+  const [graph, setGraph] = useState<Graph | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [namespace, setNamespace] = useState('all');
   const [query, setQuery] = useState('');
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isolate, setIsolate] = useState(false);
 
   const load = useCallback(async () => {
@@ -46,7 +48,7 @@ function Explorer() {
     try {
       setGraph(await fetchGraph());
     } catch (e) {
-      setError(e.message);
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
@@ -61,7 +63,7 @@ function Explorer() {
     [graph],
   );
 
-  const scoped = useMemo(() => {
+  const scoped = useMemo<Graph>(() => {
     if (!graph) return { nodes: [], edges: [] };
     if (namespace === 'all') return graph;
     const nodes = graph.nodes.filter((n) => n.namespace === namespace);
@@ -70,22 +72,21 @@ function Explorer() {
   }, [graph, namespace]);
 
   const { upstream, downstream } = useMemo(() => {
-    const up = new Map();
-    const down = new Map();
+    const up = new Map<string, string[]>();
+    const down = new Map<string, string[]>();
     for (const e of scoped.edges) {
       if (!up.has(e.target)) up.set(e.target, []);
-      up.get(e.target).push(e.source);
+      up.get(e.target)!.push(e.source);
       if (!down.has(e.source)) down.set(e.source, []);
-      down.get(e.source).push(e.target);
+      down.get(e.source)!.push(e.target);
     }
-    if (!selectedId) return { upstream: new Set(), downstream: new Set() };
+    if (!selectedId) return { upstream: new Set<string>(), downstream: new Set<string>() };
     return { upstream: traverse(selectedId, up), downstream: traverse(selectedId, down) };
   }, [scoped, selectedId]);
 
-  const selectedExists = selectedId && scoped.nodes.some((n) => n.id === selectedId);
-  const hasSelection = Boolean(selectedExists);
+  const hasSelection = selectedId !== null && scoped.nodes.some((n) => n.id === selectedId);
 
-  const visible = useMemo(() => {
+  const visible = useMemo<Graph>(() => {
     if (!(isolate && hasSelection)) return scoped;
     const keep = new Set([selectedId, ...upstream, ...downstream]);
     return {
@@ -97,7 +98,7 @@ function Explorer() {
   const positioned = useMemo(
     () =>
       layoutNodes(
-        visible.nodes.map((n) => ({ id: n.id, type: n.type, data: { ...n } })),
+        visible.nodes.map((n) => ({ id: n.id, type: n.type, data: { ...n } }) as LineageFlowNode),
         visible.edges,
       ),
     [visible],
@@ -105,19 +106,19 @@ function Explorer() {
 
   const rfNodes = useMemo(
     () =>
-      positioned.map((n) => {
-        let role = 'none';
+      positioned.map((n): LineageFlowNode => {
+        let role: Role = 'none';
         if (hasSelection) {
           if (n.id === selectedId) role = 'selected';
           else if (upstream.has(n.id)) role = 'up';
           else if (downstream.has(n.id)) role = 'down';
         }
-        return { ...n, data: { ...n.data, role, dim: hasSelection && role === 'none' } };
+        return { ...n, data: { ...n.data, role, dim: hasSelection && role === 'none' } } as LineageFlowNode;
       }),
     [positioned, hasSelection, selectedId, upstream, downstream],
   );
 
-  const rfEdges = useMemo(() => {
+  const rfEdges = useMemo<Edge[]>(() => {
     const lineage = new Set([selectedId, ...upstream, ...downstream]);
     return visible.edges.map((e) => {
       const active = hasSelection && lineage.has(e.source) && lineage.has(e.target);
@@ -144,7 +145,7 @@ function Explorer() {
       .slice(0, 8);
   }, [query, scoped]);
 
-  const focusNode = (id) => {
+  const focusNode = (id: string) => {
     setSelectedId(id);
     setQuery('');
     const n = positioned.find((p) => p.id === id);
@@ -198,11 +199,11 @@ function Explorer() {
       <main className="stage">
         {error && (
           <div className="banner error" role="alert">
-            Could not load the lineage graph: {error}. Check the table and column names in server/schema.js.
+            Could not load the lineage graph: {error}. Check the table and column names in server/schema.ts.
           </div>
         )}
         {!error && !loading && graph && graph.nodes.length === 0 && (
-          <div className="banner">No jobs or datasets found. Check that the database path and tables in server/schema.js are correct.</div>
+          <div className="banner">No jobs or datasets found. Check that the database path and tables in server/schema.ts are correct.</div>
         )}
 
         <div className="canvas">
@@ -263,16 +264,25 @@ function Explorer() {
   );
 }
 
-function Details({ node, upstreamCount, downstreamCount, isolate, onToggleIsolate, onClose }) {
-  const [runs, setRuns] = useState(null);
-  const [runsError, setRunsError] = useState(null);
+interface DetailsProps {
+  node: LineageNode;
+  upstreamCount: number;
+  downstreamCount: number;
+  isolate: boolean;
+  onToggleIsolate: () => void;
+  onClose: () => void;
+}
+
+function Details({ node, upstreamCount, downstreamCount, isolate, onToggleIsolate, onClose }: DetailsProps) {
+  const [runs, setRuns] = useState<JobRun[] | null>(null);
+  const [runsError, setRunsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (node.type !== 'job') return;
     let cancelled = false;
     fetchJobRuns(node.namespace, node.name)
       .then((r) => !cancelled && setRuns(r))
-      .catch((e) => !cancelled && setRunsError(e.message));
+      .catch((e: unknown) => !cancelled && setRunsError(e instanceof Error ? e.message : String(e)));
     return () => {
       cancelled = true;
     };
@@ -315,7 +325,7 @@ function Details({ node, upstreamCount, downstreamCount, isolate, onToggleIsolat
               {runs.map((r) => (
                 <li key={r.run_id}>
                   <div className="run-top">
-                    <span className={`badge state-${stateKey(r.state)}`}>{STATE_LABEL[r.state] || r.state || 'Unknown'}</span>
+                    <span className={`badge state-${stateKey(r.state)}`}>{(r.state && STATE_LABEL[r.state]) || r.state || 'Unknown'}</span>
                     <span className="muted">{formatDuration(r.duration_ms)}</span>
                   </div>
                   <div className="mono run-id" title={r.run_id}>{r.run_id}</div>

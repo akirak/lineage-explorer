@@ -1,6 +1,6 @@
-// Builds a small throwaway DuckDB file that matches server/schema.js,
+// Builds a small throwaway DuckDB file that matches server/schema.ts,
 // so you can try the explorer before pointing it at your own database.
-//   node scripts/make-sample-db.js sample.duckdb
+//   npx tsx scripts/make-sample-db.ts sample.duckdb
 import { DuckDBInstance } from '@duckdb/node-api';
 
 const file = process.argv[2] || 'sample.duckdb';
@@ -29,15 +29,18 @@ await c.run(`
     (uuid(), 'dbt', 'mart_customer_ltv', NULL);
 `);
 
-const runs = await (await c.runAndReadAll(`SELECT run_id::VARCHAR AS id, job_name FROM run`)).getRowObjectsJson();
-const id = Object.fromEntries(runs.map((r) => [r.job_name, r.id]));
-const states = { ingest_orders: 'COMPLETE', ingest_customers: 'COMPLETE', build_orders_clean: 'COMPLETE', build_revenue_daily: 'FAIL', mart_customer_ltv: 'RUNNING' };
+const runs = (await (await c.runAndReadAll(`SELECT run_id::VARCHAR AS id, job_name FROM run`)).getRowObjectsJson()) as {
+  id: string;
+  job_name: string;
+}[];
+const id: Record<string, string> = Object.fromEntries(runs.map((r) => [r.job_name, r.id]));
+const states: Record<string, string> = { ingest_orders: 'COMPLETE', ingest_customers: 'COMPLETE', build_orders_clean: 'COMPLETE', build_revenue_daily: 'FAIL', mart_customer_ltv: 'RUNNING' };
 let t = 0;
 for (const [job, end] of Object.entries(states)) {
   await c.run(`INSERT INTO run_event VALUES ('${id[job]}', TIMESTAMP '2026-10-12 06:00:00' + INTERVAL ${t} MINUTE, 'START'), ('${id[job]}', TIMESTAMP '2026-10-12 06:00:00' + INTERVAL ${t + 4} MINUTE + INTERVAL 17 SECOND, '${end}')`);
   t += 7;
 }
-const io = (table, job, ns, name) => c.run(`INSERT INTO ${table} VALUES ('${id[job]}', '${ns}', '${name}')`);
+const io = (table: 'input_dataset' | 'output_dataset', job: string, ns: string, name: string) => c.run(`INSERT INTO ${table} VALUES ('${id[job]}', '${ns}', '${name}')`);
 await io('input_dataset', 'ingest_orders', 'postgres://prod', 'public.orders');
 await io('output_dataset', 'ingest_orders', 's3://lake', 'raw/orders');
 await io('input_dataset', 'ingest_customers', 'postgres://prod', 'public.customers');

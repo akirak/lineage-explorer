@@ -19,24 +19,32 @@ No database yet? `npx tsx scripts/make-sample-db.ts sample.duckdb` creates a sma
 
 ## Point it at your tables
 
-Edit `server/schema.ts`. It maps each entity table to the columns this app needs:
+Edit `server/schema.ts`. It maps each entity table to the columns this app needs.
+The explorer models lineage only; it does not read runs or run events.
 
 | Table | Columns used |
 |---|---|
 | job | namespace, name |
 | dataset | namespace, name |
-| run | run id, job namespace, job name, parent run id |
-| run_event | run id, event time, event type |
-| input_dataset | run id, dataset namespace, dataset name |
-| output_dataset | run id, dataset namespace, dataset name |
+| job_input | job namespace, job name, dataset namespace, dataset name |
+| job_output | job namespace, job name, dataset namespace, dataset name |
+| dataset_field | dataset namespace, dataset name, field name, field type, description |
+| column_lineage | job namespace, job name, input dataset namespace + name + field, output dataset namespace + name + field, transformation type, transformation subtype |
 
-Edges are derived as dataset -> job (input) and job -> dataset (output) by joining the
-input/output tables to `run`. If your input/output tables hold job columns directly
-instead of a run id, adjust the `reads` and `writes` queries in `server/queries.ts`.
+Table edges are dataset -> job (`job_input`) and job -> dataset (`job_output`).
+`column_lineage` has one row per input field of an output field, following the
+OpenLineage `columnLineage` facet: the transformation type is `DIRECT` or `INDIRECT`
+and the subtype is `IDENTITY`, `TRANSFORMATION`, `AGGREGATION`, `JOIN`, `FILTER`, etc.
+The job columns may be NULL when the producing job is unknown.
 
 ## Using it
 
-- Click a node to highlight its upstream (blue) and downstream (copper) lineage.
-- "Show only this lineage" hides everything else and re-lays out the graph.
-- Search by name or namespace; filter by namespace; reload to re-query the database.
-- A job's dot shows the state of its latest run event; the side panel lists recent runs.
+- Switch between **Table lineage** (jobs and datasets) and **Column lineage**
+  (datasets drawn as tables, edges between columns) in the top bar. `?mode=column`
+  opens column mode directly.
+- Click a node, or a column in column mode, to highlight its upstream (blue) and downstream (copper) lineage.
+  In column mode, solid edges are direct transformations and dashed edges are indirect ones (joins, filters, grouping).
+- "Show only this lineage" hides everything else and re-lays out the graph. In column mode it also hides unrelated columns.
+- Search by name or namespace (and column name in column mode); filter by namespace; reload to re-query the database.
+- The side panel lists a job's inputs and outputs, a dataset's producers, consumers, and columns,
+  and the columns that a column derives from and feeds, with each transformation and its job.

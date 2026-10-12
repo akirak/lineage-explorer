@@ -1,16 +1,6 @@
-import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
+import { useEffect } from 'react';
+import { Handle, Position, useUpdateNodeInternals, type Node, type NodeProps } from '@xyflow/react';
 import type { DatasetNode as DatasetData, JobNode as JobData } from '../shared/types.ts';
-
-export const STATE_LABEL: Record<string, string> = {
-  COMPLETE: 'Complete',
-  FAIL: 'Failed',
-  ABORT: 'Aborted',
-  START: 'Started',
-  RUNNING: 'Running',
-  OTHER: 'Other',
-};
-
-export const stateKey = (s: string | null | undefined) => (s ? s.toLowerCase() : 'none');
 
 export type Role = 'none' | 'selected' | 'up' | 'down';
 
@@ -19,11 +9,21 @@ type Highlight = {
   dim?: boolean;
 };
 
+export type TableData = DatasetData &
+  Highlight & {
+    /** Highlight role per field name; missing means 'none'. */
+    fieldRoles: Record<string, Role>;
+  };
+
 export type DatasetFlowNode = Node<DatasetData & Highlight, 'dataset'>;
 export type JobFlowNode = Node<JobData & Highlight, 'job'>;
+export type TableFlowNode = Node<TableData, 'table'>;
 export type LineageFlowNode = DatasetFlowNode | JobFlowNode;
 
 const handleStyle = { opacity: 0, pointerEvents: 'none' } as const;
+
+export const inHandle = (field: string) => `in:${field}`;
+export const outHandle = (field: string) => `out:${field}`;
 
 export function DatasetNode({ data }: NodeProps<DatasetFlowNode>) {
   return (
@@ -40,10 +40,6 @@ export function JobNode({ data }: NodeProps<JobFlowNode>) {
   return (
     <div className={`node job role-${data.role}${data.dim ? ' dim' : ''}`} title={`${data.namespace}\n${data.name}`}>
       <Handle type="target" position={Position.Left} style={handleStyle} />
-      <span
-        className={`dot state-${stateKey(data.state)}`}
-        aria-label={(data.state && STATE_LABEL[data.state]) || 'No runs'}
-      />
       <div className="node-text">
         <div className="node-name">{data.name}</div>
         <div className="node-ns">{data.namespace}</div>
@@ -53,4 +49,39 @@ export function JobNode({ data }: NodeProps<JobFlowNode>) {
   );
 }
 
-export const nodeTypes = { dataset: DatasetNode, job: JobNode };
+/** A dataset drawn as a table with one row (and one pair of handles) per column. */
+export function TableNode({ id, data }: NodeProps<TableFlowNode>) {
+  const updateNodeInternals = useUpdateNodeInternals();
+  const fieldsKey = data.fields.map((f) => f.name).join('\u0000');
+  useEffect(() => updateNodeInternals(id), [id, fieldsKey, updateNodeInternals]);
+
+  return (
+    <div className={`table-node role-${data.role}${data.dim ? ' dim' : ''}`}>
+      <div className="table-head" title={`${data.namespace}\n${data.name}`}>
+        <div className="node-name">{data.name}</div>
+        <div className="node-ns">{data.namespace}</div>
+      </div>
+      <ul className="table-fields">
+        {data.fields.length === 0 && <li className="table-field empty">No column metadata</li>}
+        {data.fields.map((f) => {
+          const role = data.fieldRoles[f.name] ?? 'none';
+          return (
+            <li
+              key={f.name}
+              className={`table-field field-${role}`}
+              data-field={f.name}
+              title={f.description ? `${f.name}: ${f.description}` : f.name}
+            >
+              <Handle id={inHandle(f.name)} type="target" position={Position.Left} style={handleStyle} />
+              <span className="field-name">{f.name}</span>
+              {f.type && <span className="field-type">{f.type}</span>}
+              <Handle id={outHandle(f.name)} type="source" position={Position.Right} style={handleStyle} />
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+export const nodeTypes = { dataset: DatasetNode, job: JobNode, table: TableNode };

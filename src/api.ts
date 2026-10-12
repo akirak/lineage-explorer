@@ -1,4 +1,4 @@
-import type { ApiError, Graph, JobRun } from '../shared/types.ts';
+import type { ApiError, Graph } from '../shared/types.ts';
 
 async function get<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -8,6 +8,3 @@ async function get<T>(url: string): Promise<T> {
 }
 
 export const fetchGraph = () => get<Graph>('/api/graph');
-
-export const fetchJobRuns = (namespace: string, name: string) =>
-  get<JobRun[]>(`/api/job-runs?namespace=${encodeURIComponent(namespace)}&name=${encodeURIComponent(name)}`);

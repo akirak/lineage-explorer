@@ -16,6 +16,7 @@
               pkgs.nodejs
               pkgs.corepack
               pkgs.typescript
+              pkgs.duckdb
             ];
           };
         }

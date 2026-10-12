@@ -15,7 +15,8 @@ Production: `npm run build && DUCKDB_PATH=... npm start` (serves on http://local
 
 Type-check the server and the app with `npm run typecheck`. API response types shared by both live in `shared/types.ts`.
 
-No database yet? `npx tsx scripts/make-sample-db.ts sample.duckdb` creates a small one.
+No database yet? `duckdb sample.duckdb < scripts/sample-db.sql` creates a small one
+(the [DuckDB CLI](https://duckdb.org/docs/installation/) is in the Nix dev shell).
 
 ## Point it at your tables
 

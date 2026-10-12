@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "sample": "duckdb openlineage.duckdb < scripts/sample-db.sql",
+    "validate": "tsx scripts/validate.ts",
     "dev": "concurrently -k -n api,web \"tsx watch server/index.ts\" \"vite\"",
     "build": "vite build",
     "start": "NODE_ENV=production tsx server/index.ts",

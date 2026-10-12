@@ -24,4 +24,4 @@ export const schema = {
   runEvent: { table: 'run_event', runId: 'run_id', time: 'event_time', type: 'event_type' },
   input: { table: 'input_dataset', runId: 'run_id', namespace: 'dataset_namespace', name: 'dataset_name' },
   output: { table: 'output_dataset', runId: 'run_id', namespace: 'dataset_namespace', name: 'dataset_name' },
-};
+} as const;

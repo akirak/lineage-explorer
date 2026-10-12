@@ -1,8 +1,8 @@
 # OpenLineage lineage explorer
 
-A React Flow explorer for OpenLineage metadata stored in DuckDB. A small Express
-server reads the database (read-only) and the React app draws jobs and datasets as
-a left-to-right lineage graph.
+A React Flow explorer for OpenLineage metadata stored in DuckDB. A small Hono
+server (TypeScript, run with tsx) reads the database (read-only) and the React
+app draws jobs and datasets as a left-to-right lineage graph.
 
 ## Run it
 
@@ -13,11 +13,13 @@ DUCKDB_PATH=/path/to/openlineage.duckdb npm run dev   # http://localhost:5173
 
 Production: `npm run build && DUCKDB_PATH=... npm start` (serves on http://localhost:3001).
 
-No database yet? `node scripts/make-sample-db.js sample.duckdb` creates a small one.
+Type-check the server and the app with `npm run typecheck`. API response types shared by both live in `shared/types.ts`.
+
+No database yet? `npx tsx scripts/make-sample-db.ts sample.duckdb` creates a small one.
 
 ## Point it at your tables
 
-Edit `server/schema.js`. It maps each entity table to the columns this app needs:
+Edit `server/schema.ts`. It maps each entity table to the columns this app needs:
 
 | Table | Columns used |
 |---|---|
@@ -30,7 +32,7 @@ Edit `server/schema.js`. It maps each entity table to the columns this app needs
 
 Edges are derived as dataset -> job (input) and job -> dataset (output) by joining the
 input/output tables to `run`. If your input/output tables hold job columns directly
-instead of a run id, adjust the `reads` and `writes` queries in `server/queries.js`.
+instead of a run id, adjust the `reads` and `writes` queries in `server/queries.ts`.
 
 ## Using it
 

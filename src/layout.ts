@@ -1,9 +1,13 @@
 import dagre from '@dagrejs/dagre';
+import type { XYPosition } from '@xyflow/react';
 
 export const NODE_W = 236;
 export const NODE_H = 58;
 
-export function layoutNodes(nodes, edges) {
+export function layoutNodes<N extends { id: string }>(
+  nodes: N[],
+  edges: { source: string; target: string }[],
+): (N & { position: XYPosition })[] {
   const g = new dagre.graphlib.Graph();
   g.setGraph({ rankdir: 'LR', nodesep: 26, ranksep: 96, marginx: 24, marginy: 24 });
   g.setDefaultEdgeLabel(() => ({}));
@@ -16,11 +20,11 @@ export function layoutNodes(nodes, edges) {
   });
 }
 
-export function traverse(startId, adjacency) {
-  const seen = new Set();
+export function traverse(startId: string, adjacency: Map<string, string[]>): Set<string> {
+  const seen = new Set<string>();
   const stack = [startId];
   while (stack.length) {
-    const id = stack.pop();
+    const id = stack.pop()!;
     for (const next of adjacency.get(id) || []) {
       if (!seen.has(next)) {
         seen.add(next);

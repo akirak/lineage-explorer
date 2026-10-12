@@ -1,6 +1,6 @@
-import { schema as s } from './schema.js';
+import { schema as s } from './schema.ts';
 
-const q = (id) => `"${String(id).replace(/"/g, '""')}"`;
+const q = (id: string) => `"${id.replace(/"/g, '""')}"`;
 
 export const graphQueries = {
   jobs: `

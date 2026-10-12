@@ -26,6 +26,8 @@ export type LineageEdge = {
   id: string;
   source: string;
   target: string;
+  /** 'io' for job input/output edges, 'view' for a view over a table in the same database. */
+  kind: 'io' | 'view';
 };
 
 /** Column-level edge from an input field to an output field (OpenLineage columnLineage facet). */

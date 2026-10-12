@@ -17,6 +17,8 @@ import { inHandle, nodeTypes, outHandle, type LineageFlowNode, type Role, type T
 
 const EDGE_IDLE = '#9aa6a9';
 const EDGE_ACTIVE = '#0d6b62';
+const EDGE_VIEW = '#8b6bb8';
+const EDGE_VIEW_ACTIVE = '#5b3d8f';
 
 type Mode = 'table' | 'column';
 
@@ -39,14 +41,14 @@ type Selection =
   | { kind: 'node'; node: LineageNode }
   | { kind: 'column'; dataset: DatasetNode; field: DatasetField };
 
-function edgeStyle(active: boolean, hasSelection: boolean, dashed = false) {
-  const color = active ? EDGE_ACTIVE : EDGE_IDLE;
+function edgeStyle(active: boolean, hasSelection: boolean, dashed = false, view = false) {
+  const color = view ? (active ? EDGE_VIEW_ACTIVE : EDGE_VIEW) : active ? EDGE_ACTIVE : EDGE_IDLE;
   return {
     markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
     style: {
       stroke: color,
       strokeWidth: active ? 2 : 1.25,
-      strokeDasharray: dashed ? '5 4' : undefined,
+      strokeDasharray: dashed || view ? '5 4' : undefined,
       opacity: hasSelection && !active ? 0.18 : 1,
     },
   };
@@ -136,6 +138,7 @@ function Explorer() {
     const links = new Map<string, { source: string; target: string }>();
     const add = (source: string, target: string) => links.set(`${source}->${target}`, { source, target });
     scoped.columnEdges.forEach((e) => add(e.source, e.target));
+    scoped.edges.filter((e) => e.kind === 'view').forEach((e) => add(e.source, e.target));
     for (const n of scoped.nodes) {
       if (n.type !== 'job') continue;
       for (const i of tableAdj.up.get(n.id) || []) for (const o of tableAdj.down.get(n.id) || []) add(i, o);
@@ -253,7 +256,7 @@ function Explorer() {
       return tableVisible.edges.map((e: LineageEdge) => ({
         ...e,
         type: 'smoothstep',
-        ...edgeStyle(hasSelection && lineage.has(e.source) && lineage.has(e.target), hasSelection),
+        ...edgeStyle(hasSelection && lineage.has(e.source) && lineage.has(e.target), hasSelection, false, e.kind === 'view'),
       }));
     }
     return columnVisible.links.map(({ edge: e, source, target }) => ({
@@ -407,6 +410,7 @@ function Explorer() {
               <>
                 <span><i className="swatch ds" /> Dataset</span>
                 <span><i className="swatch jb" /> Job</span>
+                <span><i className="line view" /> View</span>
               </>
             ) : (
               <>
@@ -527,13 +531,15 @@ function Details(props: DetailsProps) {
         <ColumnDetails dataset={selection.dataset} field={selection.field} graph={graph} nodeById={nodeById} onSelect={onSelect} />
       ) : selection.node.type === 'job' ? (
         <>
-          <NodeList title="Reads" ids={graph.edges.filter((e) => e.target === selection.node.id).map((e) => e.source)} nodeById={nodeById} onSelect={onSelect} />
-          <NodeList title="Writes" ids={graph.edges.filter((e) => e.source === selection.node.id).map((e) => e.target)} nodeById={nodeById} onSelect={onSelect} />
+          <NodeList title="Reads" ids={graph.edges.filter((e) => e.target === selection.node.id && e.kind === 'io').map((e) => e.source)} nodeById={nodeById} onSelect={onSelect} />
+          <NodeList title="Writes" ids={graph.edges.filter((e) => e.source === selection.node.id && e.kind === 'io').map((e) => e.target)} nodeById={nodeById} onSelect={onSelect} />
         </>
       ) : (
         <>
-          <NodeList title="Written by" ids={graph.edges.filter((e) => e.target === selection.node.id).map((e) => e.source)} nodeById={nodeById} onSelect={onSelect} />
-          <NodeList title="Read by" ids={graph.edges.filter((e) => e.source === selection.node.id).map((e) => e.target)} nodeById={nodeById} onSelect={onSelect} />
+          <NodeList title="Written by" ids={graph.edges.filter((e) => e.target === selection.node.id && e.kind === 'io').map((e) => e.source)} nodeById={nodeById} onSelect={onSelect} />
+          <NodeList title="View of" ids={graph.edges.filter((e) => e.target === selection.node.id && e.kind === 'view').map((e) => e.source)} nodeById={nodeById} onSelect={onSelect} />
+          <NodeList title="Read by" ids={graph.edges.filter((e) => e.source === selection.node.id && e.kind === 'io').map((e) => e.target)} nodeById={nodeById} onSelect={onSelect} />
+          <NodeList title="Views" ids={graph.edges.filter((e) => e.source === selection.node.id && e.kind === 'view').map((e) => e.target)} nodeById={nodeById} onSelect={onSelect} />
           <section>
             <h3>Columns</h3>
             {selection.node.fields.length === 0 ? (

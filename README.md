@@ -29,10 +29,13 @@ The explorer models lineage only; it does not read runs or run events.
 | dataset | namespace, name |
 | job_input | job namespace, job name, dataset namespace, dataset name |
 | job_output | job namespace, job name, dataset namespace, dataset name |
+| view | view dataset namespace + name, base dataset namespace + name |
 | dataset_field | dataset namespace, dataset name, field name, field type, description |
 | column_lineage | job namespace, job name, input dataset namespace + name + field, output dataset namespace + name + field, transformation type, transformation subtype |
 
 Table edges are dataset -> job (`job_input`) and job -> dataset (`job_output`).
+A `view` row adds a direct dataset -> dataset edge for a view over a table in the
+same database (no job sits between them), following OpenLineage's `symlinks` facet.
 `column_lineage` has one row per input field of an output field, following the
 OpenLineage `columnLineage` facet: the transformation type is `DIRECT` or `INDIRECT`
 and the subtype is `IDENTITY`, `TRANSFORMATION`, `AGGREGATION`, `JOIN`, `FILTER`, etc.
@@ -49,3 +52,5 @@ The job columns may be NULL when the producing job is unknown.
 - Search by name or namespace (and column name in column mode); filter by namespace; reload to re-query the database.
 - The side panel lists a job's inputs and outputs, a dataset's producers, consumers, and columns,
   and the columns that a column derives from and feeds, with each transformation and its job.
+- Views over tables in the same database are drawn as dashed dataset -> dataset edges (no job in
+  between); a view's panel shows the table it is defined over, and a table's panel lists its views.

@@ -118,6 +118,7 @@ button, input, select { font: inherit; color: inherit; }
 
 .line { display: inline-block; width: 22px; height: 0; border-top: 2px solid var(--idle); }
 .line.indirect { border-top-style: dashed; }
+.line.view { border-top: 2px dashed #8b6bb8; }
 
 .table-node { width: 260px; background: var(--surface); border: 1.5px solid var(--line); border-radius: 4px; cursor: pointer; transition: opacity 0.15s, border-color 0.15s, box-shadow 0.15s; }
 .table-node:hover { border-color: var(--ink); }

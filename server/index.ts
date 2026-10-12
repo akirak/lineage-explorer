@@ -47,17 +47,25 @@ interface ColumnLineageRow {
   transformation_subtype: string | null;
 }
 
+interface ViewRow {
+  view_namespace: string;
+  view_name: string;
+  base_namespace: string;
+  base_name: string;
+}
+
 const jobId = (ns: string, name: string) => `job:${ns}\u0000${name}`;
 const datasetId = (ns: string, name: string) => `dataset:${ns}\u0000${name}`;
 
 async function buildGraph(): Promise<Graph> {
-  const [jobs, datasets, reads, writes, fields, columnLineage] = await Promise.all([
+  const [jobs, datasets, reads, writes, fields, columnLineage, views] = await Promise.all([
     all<NameRow>(graphQueries.jobs),
     all<NameRow>(graphQueries.datasets),
     all<IoRow>(graphQueries.reads),
     all<IoRow>(graphQueries.writes),
     all<FieldRow>(graphQueries.fields),
     all<ColumnLineageRow>(graphQueries.columnLineage),
+    all<ViewRow>(graphQueries.views),
   ]);
 
   const nodes = new Map<string, LineageNode>();
@@ -86,9 +94,9 @@ async function buildGraph(): Promise<Graph> {
   }
 
   const edges = new Map<string, LineageEdge>();
-  const addEdge = (source: string, target: string) => {
+  const addEdge = (source: string, target: string, kind: 'io' | 'view' = 'io') => {
     const id = `${source}->${target}`;
-    if (!edges.has(id)) edges.set(id, { id, source, target });
+    if (!edges.has(id)) edges.set(id, { id, source, target, kind });
   };
 
   for (const r of reads) {
@@ -96,6 +104,9 @@ async function buildGraph(): Promise<Graph> {
   }
   for (const r of writes) {
     addEdge(addJob(r.job_namespace, r.job_name), addDataset(r.dataset_namespace, r.dataset_name).id);
+  }
+  for (const v of views) {
+    addEdge(addDataset(v.base_namespace, v.base_name).id, addDataset(v.view_namespace, v.view_name).id, 'view');
   }
 
   const columnEdges = new Map<string, ColumnEdge>();

@@ -22,6 +22,11 @@ export const graphQueries = {
            ${q(s.output.jobNamespace)} AS job_namespace, ${q(s.output.jobName)} AS job_name
     FROM ${q(s.output.table)}`,
 
+  views: `
+    SELECT DISTINCT ${q(s.view.viewNamespace)} AS view_namespace, ${q(s.view.viewName)} AS view_name,
+           ${q(s.view.baseNamespace)} AS base_namespace, ${q(s.view.baseName)} AS base_name
+    FROM ${q(s.view.table)}`,
+
   fields: `
     SELECT ${q(s.field.namespace)} AS dataset_namespace, ${q(s.field.dataset)} AS dataset_name,
            ${q(s.field.name)} AS name, CAST(${q(s.field.type)} AS VARCHAR) AS type,

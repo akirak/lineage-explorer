@@ -13,6 +13,9 @@ CREATE OR REPLACE TABLE column_lineage (
   output_dataset_namespace VARCHAR, output_dataset_name VARCHAR, output_field VARCHAR,
   transformation_type VARCHAR, transformation_subtype VARCHAR
 );
+-- A view over a table in the same database: no job sits between them, so the
+-- lineage is a direct dataset -> dataset edge (OpenLineage's symlinks facet).
+CREATE OR REPLACE TABLE view (view_namespace VARCHAR, view_name VARCHAR, base_namespace VARCHAR, base_name VARCHAR);
 
 INSERT INTO job VALUES
   ('airflow', 'ingest_orders'),
@@ -54,7 +57,11 @@ INSERT INTO dataset_field VALUES
   ('warehouse', 'marts.customer_ltv', 'customer_id', 'BIGINT', NULL),
   ('warehouse', 'marts.customer_ltv', 'country', 'VARCHAR', NULL),
   ('warehouse', 'marts.customer_ltv', 'lifetime_value_usd', 'DECIMAL(14,2)', NULL),
-  ('warehouse', 'marts.customer_ltv', 'first_order_date', 'DATE', NULL);
+  ('warehouse', 'marts.customer_ltv', 'first_order_date', 'DATE', NULL),
+  ('warehouse', 'marts.revenue_daily_us', 'order_date', 'DATE', NULL),
+  ('warehouse', 'marts.revenue_daily_us', 'country', 'VARCHAR', NULL),
+  ('warehouse', 'marts.revenue_daily_us', 'revenue_usd', 'DECIMAL(14,2)', NULL),
+  ('warehouse', 'marts.revenue_daily_us', 'order_count', 'BIGINT', NULL);
 
 INSERT INTO dataset
 SELECT DISTINCT dataset_namespace, dataset_name FROM dataset_field;
@@ -73,6 +80,10 @@ INSERT INTO job_output VALUES
   ('spark', 'build_orders_clean', 's3://lake', 'clean/orders'),
   ('spark', 'build_revenue_daily', 'warehouse', 'marts.revenue_daily'),
   ('dbt', 'mart_customer_ltv', 'warehouse', 'marts.customer_ltv');
+
+-- marts.revenue_daily_us is a view over marts.revenue_daily in the same warehouse.
+INSERT INTO view VALUES
+  ('warehouse', 'marts.revenue_daily_us', 'warehouse', 'marts.revenue_daily');
 
 -- Ingest jobs copy every column unchanged.
 INSERT INTO column_lineage
@@ -107,3 +118,10 @@ INSERT INTO column_lineage VALUES
   ('dbt', 'mart_customer_ltv', 's3://lake', 'clean/orders', 'amount_usd', 'warehouse', 'marts.customer_ltv', 'lifetime_value_usd', 'DIRECT', 'AGGREGATION'),
   ('dbt', 'mart_customer_ltv', 's3://lake', 'clean/orders', 'order_date', 'warehouse', 'marts.customer_ltv', 'first_order_date', 'DIRECT', 'AGGREGATION'),
   ('dbt', 'mart_customer_ltv', 's3://lake', 'clean/orders', 'customer_id', 'warehouse', 'marts.customer_ltv', 'lifetime_value_usd', 'INDIRECT', 'GROUP_BY');
+
+-- The view's columns are the base table's columns unchanged; there is no job.
+INSERT INTO column_lineage VALUES
+  (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'order_date', 'warehouse', 'marts.revenue_daily_us', 'order_date', 'DIRECT', 'IDENTITY'),
+  (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'country', 'warehouse', 'marts.revenue_daily_us', 'country', 'DIRECT', 'IDENTITY'),
+  (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'revenue_usd', 'warehouse', 'marts.revenue_daily_us', 'revenue_usd', 'DIRECT', 'IDENTITY'),
+  (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'order_count', 'warehouse', 'marts.revenue_daily_us', 'order_count', 'DIRECT', 'IDENTITY');

@@ -8,6 +8,8 @@
 //   dataset        one row per dataset          (namespace, name)
 //   job_input      datasets a job reads         (job, dataset)
 //   job_output     datasets a job writes        (job, dataset)
+//   view           a view over a table in the   (view dataset, base dataset)
+//                  same database
 //   dataset_field  columns of a dataset         (dataset, field name, type, description)
 //   column_lineage one row per input field of   (job, input dataset + field,
 //                  an output field                output dataset + field,
@@ -34,6 +36,13 @@ export const schema = {
     jobName: 'job_name',
     namespace: 'dataset_namespace',
     name: 'dataset_name',
+  },
+  view: {
+    table: 'view',
+    viewNamespace: 'view_namespace',
+    viewName: 'view_name',
+    baseNamespace: 'base_namespace',
+    baseName: 'base_name',
   },
   field: {
     table: 'dataset_field',

@@ -1,0 +1,25 @@
+{
+  "name": "openlineage-explorer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "sample": "node scripts/make-sample-db.js openlineage.duckdb",
+    "dev": "concurrently -k -n api,web \"node server/index.js\" \"vite\"",
+    "build": "vite build",
+    "start": "NODE_ENV=production node server/index.js"
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "^3.1.1",
+    "@duckdb/node-api": "^1.5.6-r.1",
+    "@xyflow/react": "^12.12.0",
+    "express": "^5.3.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.6",
+    "vite": "^8.3.4"
+  }
+}

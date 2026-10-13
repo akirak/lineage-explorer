@@ -3,6 +3,8 @@ export type JobNode = {
   type: 'job';
   namespace: string;
   name: string;
+  title: string | null;
+  description: string | null;
 };
 
 export type DatasetField = {
@@ -16,6 +18,8 @@ export type DatasetNode = {
   type: 'dataset';
   namespace: string;
   name: string;
+  title: string | null;
+  description: string | null;
   fields: DatasetField[];
 };
 

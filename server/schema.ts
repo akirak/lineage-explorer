@@ -4,8 +4,8 @@
 // The explorer models lineage only; it does not read runs or run events.
 // Adjust the table and column names below to whatever your database uses.
 //
-//   job            one row per job              (namespace, name)
-//   dataset        one row per dataset          (namespace, name)
+//   job            one row per job              (namespace, name, optional title, description)
+//   dataset        one row per dataset          (namespace, name, optional title, description)
 //   job_input      datasets a job reads         (job, dataset)
 //   job_output     datasets a job writes        (job, dataset)
 //   view           a view over a table in the   (view dataset, base dataset)
@@ -21,8 +21,8 @@
 // The job columns may be NULL when the producing job is unknown.
 // ---------------------------------------------------------------------------
 export const schema = {
-  job: { table: 'job', namespace: 'namespace', name: 'name' },
-  dataset: { table: 'dataset', namespace: 'namespace', name: 'name' },
+  job: { table: 'job', namespace: 'namespace', name: 'name', title: 'title', description: 'description' },
+  dataset: { table: 'dataset', namespace: 'namespace', name: 'name', title: 'title', description: 'description' },
   input: {
     table: 'job_input',
     jobNamespace: 'job_namespace',

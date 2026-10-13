@@ -284,7 +284,7 @@ function Explorer() {
     const out: SearchMatch[] = [];
     for (const n of scoped.nodes) {
       if (mode === 'column' && n.type === 'job') continue;
-      if (hit(n.name, n.namespace)) out.push({ id: n.id, kind: n.type, name: n.name, context: n.namespace });
+      if (hit(n.name, n.namespace, n.title ?? '', n.description ?? '')) out.push({ id: n.id, kind: n.type, name: n.name, context: n.namespace });
     }
     if (mode === 'column') {
       for (const d of datasets) {
@@ -488,7 +488,7 @@ function Details(props: DetailsProps) {
     props;
   const isColumn = selection.kind === 'column';
   const kind = isColumn ? 'column' : selection.node.type;
-  const title = isColumn ? selection.field.name : selection.node.name;
+  const heading = isColumn ? selection.field.name : selection.node.title ?? selection.node.name;
   const unit = mode === 'column' ? ' columns' : '';
 
   return (
@@ -499,7 +499,7 @@ function Details(props: DetailsProps) {
           ×
         </button>
       </div>
-      <h2 className="mono">{title}</h2>
+      <h2 className="mono">{heading}</h2>
       {isColumn ? (
         <p className="muted">
           <button className="link inline" onClick={() => onSelect(selection.dataset.id)}>
@@ -508,7 +508,15 @@ function Details(props: DetailsProps) {
           {selection.field.type && <span className="mono"> · {selection.field.type}</span>}
         </p>
       ) : (
-        <p className="mono muted">{selection.node.namespace}</p>
+        <>
+          <p className="mono muted">
+            {selection.node.title && selection.node.title !== selection.node.name
+              ? `${selection.node.name} · `
+              : ''}
+            {selection.node.namespace}
+          </p>
+          {selection.node.description && <p>{selection.node.description}</p>}
+        </>
       )}
       {isColumn && selection.field.description && <p>{selection.field.description}</p>}
 

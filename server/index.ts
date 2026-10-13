@@ -5,6 +5,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { DuckDBInstance, type DuckDBValue } from '@duckdb/node-api';
 import type { ApiError, ColumnEdge, DatasetField, DatasetNode, Graph, LineageEdge, LineageNode } from '../shared/types.ts';
 import { graphQueries } from './queries.ts';
+import { schema as s } from './schema.ts';
 
 const DB_PATH = process.env.DUCKDB_PATH || process.argv[2] || './openlineage.duckdb';
 const PORT = Number(process.env.PORT || 3001);
@@ -17,9 +18,27 @@ const all = async <T>(sql: string, params?: DuckDBValue[]): Promise<T[]> => {
   return reader.getRowObjectsJson() as unknown as T[];
 };
 
+const tableColumns = async (table: string): Promise<Set<string>> => {
+  const rows = await all<{ column_name: string }>(
+    `SELECT column_name FROM information_schema.columns WHERE table_schema = 'main' AND table_name = ?`,
+    [table],
+  );
+  return new Set(rows.map((r) => r.column_name));
+};
+
+// Optional title/description columns are selected only when they exist.
+const availableColumns = {
+  job: await tableColumns(s.job.table),
+  dataset: await tableColumns(s.dataset.table),
+};
+
+const queries = graphQueries(availableColumns);
+
 interface NameRow {
   namespace: string;
   name: string;
+  title: string | null;
+  description: string | null;
 }
 
 interface IoRow {
@@ -59,32 +78,32 @@ const datasetId = (ns: string, name: string) => `dataset:${ns}\u0000${name}`;
 
 async function buildGraph(): Promise<Graph> {
   const [jobs, datasets, reads, writes, fields, columnLineage, views] = await Promise.all([
-    all<NameRow>(graphQueries.jobs),
-    all<NameRow>(graphQueries.datasets),
-    all<IoRow>(graphQueries.reads),
-    all<IoRow>(graphQueries.writes),
-    all<FieldRow>(graphQueries.fields),
-    all<ColumnLineageRow>(graphQueries.columnLineage),
-    all<ViewRow>(graphQueries.views),
+    all<NameRow>(queries.jobs),
+    all<NameRow>(queries.datasets),
+    all<IoRow>(queries.reads),
+    all<IoRow>(queries.writes),
+    all<FieldRow>(queries.fields),
+    all<ColumnLineageRow>(queries.columnLineage),
+    all<ViewRow>(queries.views),
   ]);
 
   const nodes = new Map<string, LineageNode>();
-  const addJob = (namespace: string, name: string) => {
+  const addJob = (namespace: string, name: string, title: string | null = null, description: string | null = null) => {
     const id = jobId(namespace, name);
-    if (!nodes.has(id)) nodes.set(id, { id, type: 'job', namespace, name });
+    if (!nodes.has(id)) nodes.set(id, { id, type: 'job', namespace, name, title, description });
     return id;
   };
-  const addDataset = (namespace: string, name: string) => {
+  const addDataset = (namespace: string, name: string, title: string | null = null, description: string | null = null) => {
     const id = datasetId(namespace, name);
-    if (!nodes.has(id)) nodes.set(id, { id, type: 'dataset', namespace, name, fields: [] });
+    if (!nodes.has(id)) nodes.set(id, { id, type: 'dataset', namespace, name, title, description, fields: [] });
     return nodes.get(id) as DatasetNode;
   };
   const addField = (dataset: DatasetNode, field: DatasetField) => {
     if (!dataset.fields.some((f) => f.name === field.name)) dataset.fields.push(field);
   };
 
-  jobs.forEach((j) => addJob(j.namespace, j.name));
-  datasets.forEach((d) => addDataset(d.namespace, d.name));
+  jobs.forEach((j) => addJob(j.namespace, j.name, j.title, j.description));
+  datasets.forEach((d) => addDataset(d.namespace, d.name, d.title, d.description));
   for (const f of fields) {
     addField(addDataset(f.dataset_namespace, f.dataset_name), {
       name: f.name,

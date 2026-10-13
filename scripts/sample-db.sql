@@ -2,8 +2,8 @@
 -- so you can try the explorer before pointing it at your own database.
 --   duckdb sample.duckdb < scripts/sample-db.sql
 
-CREATE OR REPLACE TABLE job (namespace VARCHAR, name VARCHAR);
-CREATE OR REPLACE TABLE dataset (namespace VARCHAR, name VARCHAR);
+CREATE OR REPLACE TABLE job (namespace VARCHAR, name VARCHAR, title VARCHAR, description VARCHAR);
+CREATE OR REPLACE TABLE dataset (namespace VARCHAR, name VARCHAR, title VARCHAR, description VARCHAR);
 CREATE OR REPLACE TABLE job_input (job_namespace VARCHAR, job_name VARCHAR, dataset_namespace VARCHAR, dataset_name VARCHAR);
 CREATE OR REPLACE TABLE job_output (job_namespace VARCHAR, job_name VARCHAR, dataset_namespace VARCHAR, dataset_name VARCHAR);
 CREATE OR REPLACE TABLE dataset_field (dataset_namespace VARCHAR, dataset_name VARCHAR, field_name VARCHAR, field_type VARCHAR, description VARCHAR);
@@ -18,11 +18,11 @@ CREATE OR REPLACE TABLE column_lineage (
 CREATE OR REPLACE TABLE view (view_namespace VARCHAR, view_name VARCHAR, base_namespace VARCHAR, base_name VARCHAR);
 
 INSERT INTO job VALUES
-  ('airflow', 'ingest_orders'),
-  ('airflow', 'ingest_customers'),
-  ('spark', 'build_orders_clean'),
-  ('spark', 'build_revenue_daily'),
-  ('dbt', 'mart_customer_ltv');
+  ('airflow', 'ingest_orders', 'Ingest orders', 'Copies raw orders from Postgres into the lake'),
+  ('airflow', 'ingest_customers', 'Ingest customers', 'Copies raw customers from Postgres into the lake'),
+  ('spark', 'build_orders_clean', 'Build clean orders', 'Cleans and normalizes raw orders'),
+  ('spark', 'build_revenue_daily', 'Build daily revenue', 'Aggregates clean orders into daily revenue'),
+  ('dbt', 'mart_customer_ltv', 'Customer LTV mart', 'Computes customer lifetime value');
 
 INSERT INTO dataset_field VALUES
   ('postgres://prod', 'public.orders', 'order_id', 'BIGINT', 'Primary key'),
@@ -64,7 +64,12 @@ INSERT INTO dataset_field VALUES
   ('warehouse', 'marts.revenue_daily_us', 'order_count', 'BIGINT', NULL);
 
 INSERT INTO dataset
-SELECT DISTINCT dataset_namespace, dataset_name FROM dataset_field;
+SELECT DISTINCT dataset_namespace, dataset_name, NULL, NULL FROM dataset_field;
+
+-- Optional human-friendly titles and descriptions for a few datasets.
+UPDATE dataset SET title = 'Orders', description = 'Raw orders from the production Postgres database' WHERE namespace = 'postgres://prod' AND name = 'public.orders';
+UPDATE dataset SET title = 'Clean orders', description = 'Cleaned and normalized orders' WHERE namespace = 's3://lake' AND name = 'clean/orders';
+UPDATE dataset SET title = 'Daily revenue', description = 'Revenue aggregated per day and country' WHERE namespace = 'warehouse' AND name = 'marts.revenue_daily';
 
 INSERT INTO job_input VALUES
   ('airflow', 'ingest_orders', 'postgres://prod', 'public.orders'),

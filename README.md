@@ -25,8 +25,8 @@ The explorer models lineage only; it does not read runs or run events.
 
 | Table | Columns used |
 |---|---|
-| job | namespace, name |
-| dataset | namespace, name |
+| job | namespace, name, optional title, description |
+| dataset | namespace, name, optional title, description |
 | job_input | job namespace, job name, dataset namespace, dataset name |
 | job_output | job namespace, job name, dataset namespace, dataset name |
 | view | view dataset namespace + name, base dataset namespace + name |
@@ -40,6 +40,10 @@ same database (no job sits between them), following OpenLineage's `symlinks` fac
 OpenLineage `columnLineage` facet: the transformation type is `DIRECT` or `INDIRECT`
 and the subtype is `IDENTITY`, `TRANSFORMATION`, `AGGREGATION`, `JOIN`, `FILTER`, etc.
 The job columns may be NULL when the producing job is unknown.
+
+`title` and `description` on `job` and `dataset` are optional: when the columns are
+absent the explorer falls back to the `name`, and when present the title is shown as
+the node label (with the description in the tooltip and details panel).
 
 ## Using it
 

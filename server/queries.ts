@@ -3,13 +3,27 @@ import { schema as s } from './schema.ts';
 const q = (id: string) => `"${id.replace(/"/g, '""')}"`;
 const cl = s.columnLineage;
 
-export const graphQueries = {
+/** Column names present in each table, used to select optional columns. */
+export type AvailableColumns = {
+  job: Set<string>;
+  dataset: Set<string>;
+};
+
+/** Select an optional column, or NULL when the column does not exist. */
+const opt = (available: Set<string>, column: string, alias: string) =>
+  available.has(column) ? `CAST(${q(column)} AS VARCHAR) AS ${q(alias)}` : `NULL AS ${q(alias)}`;
+
+export const graphQueries = (available: AvailableColumns) => ({
   jobs: `
-    SELECT ${q(s.job.namespace)} AS namespace, ${q(s.job.name)} AS name
+    SELECT ${q(s.job.namespace)} AS namespace, ${q(s.job.name)} AS name,
+           ${opt(available.job, s.job.title, 'title')},
+           ${opt(available.job, s.job.description, 'description')}
     FROM ${q(s.job.table)}`,
 
   datasets: `
-    SELECT ${q(s.dataset.namespace)} AS namespace, ${q(s.dataset.name)} AS name
+    SELECT ${q(s.dataset.namespace)} AS namespace, ${q(s.dataset.name)} AS name,
+           ${opt(available.dataset, s.dataset.title, 'title')},
+           ${opt(available.dataset, s.dataset.description, 'description')}
     FROM ${q(s.dataset.table)}`,
 
   reads: `
@@ -42,4 +56,4 @@ export const graphQueries = {
            ${q(cl.transformationType)} AS transformation_type,
            ${q(cl.transformationSubtype)} AS transformation_subtype
     FROM ${q(cl.table)}`,
-};
+});

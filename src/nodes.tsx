@@ -25,11 +25,18 @@ const handleStyle = { opacity: 0, pointerEvents: 'none' } as const;
 export const inHandle = (field: string) => `in:${field}`;
 export const outHandle = (field: string) => `out:${field}`;
 
+const nodeLabel = (title: string | null, name: string) => title ?? name;
+const nodeTooltip = (title: string | null, name: string, namespace: string, description: string | null) =>
+  [title && title !== name ? title : null, name, namespace, description].filter(Boolean).join('\n');
+
 export function DatasetNode({ data }: NodeProps<DatasetFlowNode>) {
   return (
-    <div className={`node dataset role-${data.role}${data.dim ? ' dim' : ''}`} title={`${data.namespace}\n${data.name}`}>
+    <div
+      className={`node dataset role-${data.role}${data.dim ? ' dim' : ''}`}
+      title={nodeTooltip(data.title, data.name, data.namespace, data.description)}
+    >
       <Handle type="target" position={Position.Left} style={handleStyle} />
-      <div className="node-name">{data.name}</div>
+      <div className="node-name">{nodeLabel(data.title, data.name)}</div>
       <div className="node-ns">{data.namespace}</div>
       <Handle type="source" position={Position.Right} style={handleStyle} />
     </div>
@@ -38,10 +45,13 @@ export function DatasetNode({ data }: NodeProps<DatasetFlowNode>) {
 
 export function JobNode({ data }: NodeProps<JobFlowNode>) {
   return (
-    <div className={`node job role-${data.role}${data.dim ? ' dim' : ''}`} title={`${data.namespace}\n${data.name}`}>
+    <div
+      className={`node job role-${data.role}${data.dim ? ' dim' : ''}`}
+      title={nodeTooltip(data.title, data.name, data.namespace, data.description)}
+    >
       <Handle type="target" position={Position.Left} style={handleStyle} />
       <div className="node-text">
-        <div className="node-name">{data.name}</div>
+        <div className="node-name">{nodeLabel(data.title, data.name)}</div>
         <div className="node-ns">{data.namespace}</div>
       </div>
       <Handle type="source" position={Position.Right} style={handleStyle} />
@@ -57,8 +67,8 @@ export function TableNode({ id, data }: NodeProps<TableFlowNode>) {
 
   return (
     <div className={`table-node role-${data.role}${data.dim ? ' dim' : ''}`}>
-      <div className="table-head" title={`${data.namespace}\n${data.name}`}>
-        <div className="node-name">{data.name}</div>
+      <div className="table-head" title={nodeTooltip(data.title, data.name, data.namespace, data.description)}>
+        <div className="node-name">{nodeLabel(data.title, data.name)}</div>
         <div className="node-ns">{data.namespace}</div>
       </div>
       <ul className="table-fields">

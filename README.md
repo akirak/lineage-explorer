@@ -1,4 +1,4 @@
-# OpenLineage lineage explorer
+# Lineage Explorer
 
 A React Flow explorer for OpenLineage metadata stored in DuckDB. A small Hono
 server (TypeScript, run with tsx) reads the database (read-only) and the React

@@ -125,6 +125,46 @@ const checks: Check[] = [
     describe: (r) => `base dataset ${r.ns}/${r.name}`,
   },
   {
+    name: 'view is not defined over itself, directly or through other views',
+    uses: [s.view.table],
+    sql: `
+      WITH RECURSIVE reach(view_ns, view_name, base_ns, base_name, path) AS (
+        SELECT ${q(s.view.viewNamespace)}, ${q(s.view.viewName)}, ${q(s.view.baseNamespace)}, ${q(s.view.baseName)},
+               [[${q(s.view.viewNamespace)}, ${q(s.view.viewName)}]]
+        FROM ${q(s.view.table)}
+        UNION ALL
+        SELECT r.view_ns, r.view_name, v.${q(s.view.baseNamespace)}, v.${q(s.view.baseName)},
+               list_append(r.path, [r.base_ns, r.base_name])
+        FROM reach r
+        JOIN ${q(s.view.table)} v
+          ON v.${q(s.view.viewNamespace)} = r.base_ns
+         AND v.${q(s.view.viewName)} = r.base_name
+        WHERE NOT list_contains(r.path, [r.base_ns, r.base_name])
+      )
+      SELECT DISTINCT view_ns AS ns, view_name AS name
+      FROM reach
+      WHERE base_ns = view_ns AND base_name = view_name`,
+    describe: (r) => `view ${r.ns}/${r.name}`,
+  },
+  {
+    name: 'view column_lineage (no job) reads from one of the view\'s base datasets',
+    uses: [s.columnLineage.table, s.view.table],
+    sql: `
+      SELECT DISTINCT cl.${q(s.columnLineage.outputNamespace)} AS ns, cl.${q(s.columnLineage.outputDataset)} AS name,
+             cl.${q(s.columnLineage.inputNamespace)} AS input_ns, cl.${q(s.columnLineage.inputDataset)} AS input_name
+      FROM ${q(s.columnLineage.table)} cl
+      SEMI JOIN ${q(s.view.table)} v
+        ON v.${q(s.view.viewNamespace)} = cl.${q(s.columnLineage.outputNamespace)}
+       AND v.${q(s.view.viewName)} = cl.${q(s.columnLineage.outputDataset)}
+      ANTI JOIN ${q(s.view.table)} b
+        ON b.${q(s.view.viewNamespace)} = cl.${q(s.columnLineage.outputNamespace)}
+       AND b.${q(s.view.viewName)} = cl.${q(s.columnLineage.outputDataset)}
+       AND b.${q(s.view.baseNamespace)} = cl.${q(s.columnLineage.inputNamespace)}
+       AND b.${q(s.view.baseName)} = cl.${q(s.columnLineage.inputDataset)}
+      WHERE cl.${q(s.columnLineage.jobNamespace)} IS NULL`,
+    describe: (r) => `view ${r.ns}/${r.name} reads ${r.input_ns}/${r.input_name}`,
+  },
+  {
     name: 'dataset_field references a defined dataset',
     uses: [s.field.table, s.dataset.table],
     sql: `

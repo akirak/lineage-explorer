@@ -8,7 +8,8 @@
 //   dataset        one row per dataset          (namespace, name, optional title, description)
 //   job_input      datasets a job reads         (job, dataset)
 //   job_output     datasets a job writes        (job, dataset)
-//   view           a view over a table in the   (view dataset, base dataset)
+//   view           one row per table or view a  (view dataset, base dataset)
+//                  view is defined over, in the
 //                  same database
 //   dataset_field  columns of a dataset         (dataset, field name, type, description)
 //   column_lineage one row per input field of   (job, input dataset + field,

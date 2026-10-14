@@ -61,7 +61,16 @@ INSERT INTO dataset_field VALUES
   ('warehouse', 'marts.revenue_daily_us', 'order_date', 'DATE', NULL),
   ('warehouse', 'marts.revenue_daily_us', 'country', 'VARCHAR', NULL),
   ('warehouse', 'marts.revenue_daily_us', 'revenue_usd', 'DECIMAL(14,2)', NULL),
-  ('warehouse', 'marts.revenue_daily_us', 'order_count', 'BIGINT', NULL);
+  ('warehouse', 'marts.revenue_daily_us', 'order_count', 'BIGINT', NULL),
+  ('warehouse', 'marts.country_kpis', 'country', 'VARCHAR', NULL),
+  ('warehouse', 'marts.country_kpis', 'revenue_usd', 'DECIMAL(16,2)', NULL),
+  ('warehouse', 'marts.country_kpis', 'order_count', 'BIGINT', NULL),
+  ('warehouse', 'marts.country_kpis', 'customer_count', 'BIGINT', NULL),
+  ('warehouse', 'marts.country_kpis', 'avg_lifetime_value_usd', 'DECIMAL(14,2)', NULL),
+  ('warehouse', 'marts.us_revenue_share', 'order_date', 'DATE', NULL),
+  ('warehouse', 'marts.us_revenue_share', 'us_revenue_usd', 'DECIMAL(14,2)', NULL),
+  ('warehouse', 'marts.us_revenue_share', 'total_revenue_usd', 'DECIMAL(16,2)', NULL),
+  ('warehouse', 'marts.us_revenue_share', 'us_share', 'DOUBLE', 'Share of the day''s revenue from the US');
 
 INSERT INTO dataset
 SELECT DISTINCT dataset_namespace, dataset_name, NULL, NULL FROM dataset_field;
@@ -86,9 +95,16 @@ INSERT INTO job_output VALUES
   ('spark', 'build_revenue_daily', 'warehouse', 'marts.revenue_daily'),
   ('dbt', 'mart_customer_ltv', 'warehouse', 'marts.customer_ltv');
 
--- marts.revenue_daily_us is a view over marts.revenue_daily in the same warehouse.
+-- A view has one row per table or view it is defined over:
+--   marts.revenue_daily_us  over one table (marts.revenue_daily)
+--   marts.country_kpis      over two tables (marts.revenue_daily joined with marts.customer_ltv)
+--   marts.us_revenue_share  over a view and a table (marts.revenue_daily_us joined with marts.revenue_daily)
 INSERT INTO view VALUES
-  ('warehouse', 'marts.revenue_daily_us', 'warehouse', 'marts.revenue_daily');
+  ('warehouse', 'marts.revenue_daily_us', 'warehouse', 'marts.revenue_daily'),
+  ('warehouse', 'marts.country_kpis', 'warehouse', 'marts.revenue_daily'),
+  ('warehouse', 'marts.country_kpis', 'warehouse', 'marts.customer_ltv'),
+  ('warehouse', 'marts.us_revenue_share', 'warehouse', 'marts.revenue_daily_us'),
+  ('warehouse', 'marts.us_revenue_share', 'warehouse', 'marts.revenue_daily');
 
 -- Ingest jobs copy every column unchanged.
 INSERT INTO column_lineage
@@ -124,9 +140,30 @@ INSERT INTO column_lineage VALUES
   ('dbt', 'mart_customer_ltv', 's3://lake', 'clean/orders', 'order_date', 'warehouse', 'marts.customer_ltv', 'first_order_date', 'DIRECT', 'AGGREGATION'),
   ('dbt', 'mart_customer_ltv', 's3://lake', 'clean/orders', 'customer_id', 'warehouse', 'marts.customer_ltv', 'lifetime_value_usd', 'INDIRECT', 'GROUP_BY');
 
--- The view's columns are the base table's columns unchanged; there is no job.
+-- View columns derive from their base tables and views; there is no job.
+-- marts.revenue_daily_us passes the base table's columns through unchanged.
 INSERT INTO column_lineage VALUES
   (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'order_date', 'warehouse', 'marts.revenue_daily_us', 'order_date', 'DIRECT', 'IDENTITY'),
   (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'country', 'warehouse', 'marts.revenue_daily_us', 'country', 'DIRECT', 'IDENTITY'),
   (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'revenue_usd', 'warehouse', 'marts.revenue_daily_us', 'revenue_usd', 'DIRECT', 'IDENTITY'),
   (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'order_count', 'warehouse', 'marts.revenue_daily_us', 'order_count', 'DIRECT', 'IDENTITY');
+
+-- marts.country_kpis aggregates both base tables per country and joins them on country.
+INSERT INTO column_lineage VALUES
+  (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'country', 'warehouse', 'marts.country_kpis', 'country', 'DIRECT', 'IDENTITY'),
+  (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'revenue_usd', 'warehouse', 'marts.country_kpis', 'revenue_usd', 'DIRECT', 'AGGREGATION'),
+  (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'order_count', 'warehouse', 'marts.country_kpis', 'order_count', 'DIRECT', 'AGGREGATION'),
+  (NULL, NULL, 'warehouse', 'marts.customer_ltv', 'customer_id', 'warehouse', 'marts.country_kpis', 'customer_count', 'DIRECT', 'AGGREGATION'),
+  (NULL, NULL, 'warehouse', 'marts.customer_ltv', 'lifetime_value_usd', 'warehouse', 'marts.country_kpis', 'avg_lifetime_value_usd', 'DIRECT', 'AGGREGATION'),
+  (NULL, NULL, 'warehouse', 'marts.customer_ltv', 'country', 'warehouse', 'marts.country_kpis', 'country', 'INDIRECT', 'JOIN'),
+  (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'country', 'warehouse', 'marts.country_kpis', 'revenue_usd', 'INDIRECT', 'GROUP_BY'),
+  (NULL, NULL, 'warehouse', 'marts.customer_ltv', 'country', 'warehouse', 'marts.country_kpis', 'customer_count', 'INDIRECT', 'GROUP_BY');
+
+-- marts.us_revenue_share joins the US view with the daily totals of its base table.
+INSERT INTO column_lineage VALUES
+  (NULL, NULL, 'warehouse', 'marts.revenue_daily_us', 'order_date', 'warehouse', 'marts.us_revenue_share', 'order_date', 'DIRECT', 'IDENTITY'),
+  (NULL, NULL, 'warehouse', 'marts.revenue_daily_us', 'revenue_usd', 'warehouse', 'marts.us_revenue_share', 'us_revenue_usd', 'DIRECT', 'AGGREGATION'),
+  (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'revenue_usd', 'warehouse', 'marts.us_revenue_share', 'total_revenue_usd', 'DIRECT', 'AGGREGATION'),
+  (NULL, NULL, 'warehouse', 'marts.revenue_daily_us', 'revenue_usd', 'warehouse', 'marts.us_revenue_share', 'us_share', 'DIRECT', 'TRANSFORMATION'),
+  (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'revenue_usd', 'warehouse', 'marts.us_revenue_share', 'us_share', 'DIRECT', 'TRANSFORMATION'),
+  (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'order_date', 'warehouse', 'marts.us_revenue_share', 'order_date', 'INDIRECT', 'JOIN');

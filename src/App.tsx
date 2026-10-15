@@ -6,6 +6,7 @@ import {
   Controls,
   MiniMap,
   MarkerType,
+  Panel,
   useReactFlow,
   type Edge,
   type Node,
@@ -270,11 +271,6 @@ function Explorer() {
     }));
   }, [mode, tableVisible, columnVisible, hasSelection, lineage]);
 
-  useEffect(() => {
-    const t = setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 50);
-    return () => clearTimeout(t);
-  }, [positioned, fitView]);
-
   // ---- Search --------------------------------------------------------------
 
   const matches = useMemo<SearchMatch[]>(() => {
@@ -397,7 +393,12 @@ function Explorer() {
             proOptions={{ hideAttribution: true }}
           >
             <Background gap={24} size={1} color="#d6dcdc" />
-            <Controls showInteractive={false} />
+            <Controls showInteractive={false} showFitView={false} />
+            <Panel position="top-right">
+              <button className="btn" onClick={() => fitView({ padding: 0.2, duration: 300 })}>
+                Fit view
+              </button>
+            </Panel>
             <MiniMap
               pannable
               zoomable

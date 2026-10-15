@@ -74,10 +74,7 @@ button, input, select { font: inherit; color: inherit; }
 .node.dataset.role-down { border-left-color: var(--down); }
 .node.dataset.role-selected { border-left-color: var(--ink); }
 
-.panel { width: 300px; flex: none; overflow-y: auto; background: var(--surface); border-left: 1px solid var(--line); }
-.panel.open { width: 340px; }
-.panel-empty { padding: 20px; color: var(--ink-2); }
-.counts { font-size: 13px; }
+.panel { width: 340px; flex: none; overflow-y: auto; background: var(--surface); border-left: 1px solid var(--line); }
 
 .details { padding: 16px 20px 24px; }
 .details-head { display: flex; justify-content: space-between; align-items: center; }
@@ -145,7 +142,7 @@ button, input, select { font: inherit; color: inherit; }
 
 @media (max-width: 760px) {
   .stage { flex-direction: column; }
-  .panel, .panel.open { width: 100%; max-height: 45%; border-left: 0; border-top: 1px solid var(--line); }
+  .panel { width: 100%; max-height: 45%; border-left: 0; border-top: 1px solid var(--line); }
   .legend { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

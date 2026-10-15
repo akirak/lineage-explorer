@@ -309,7 +309,6 @@ function Explorer() {
     setSelectedId(mode === 'column' && field != null ? colKey(n.id, field) : n.id);
   };
 
-  const columnCount = datasets.reduce((sum, d) => sum + d.fields.length, 0);
 
   return (
     <div className="app">
@@ -424,8 +423,8 @@ function Explorer() {
           </div>
         </div>
 
-        <aside className={`panel${selection ? ' open' : ''}`}>
-          {selection ? (
+        {selection && (
+          <aside className="panel">
             <Details
               key={selectedId}
               selection={selection}
@@ -439,23 +438,8 @@ function Explorer() {
               onSelect={focusNode}
               onClose={() => setSelectedId(null)}
             />
-          ) : (
-            <div className="panel-empty">
-              <p>
-                {mode === 'table'
-                  ? 'Select a job or dataset to trace what feeds it and what depends on it.'
-                  : 'Select a column to trace the columns it derives from and the columns that depend on it.'}
-              </p>
-              {graph && (
-                <p className="counts">
-                  {mode === 'table'
-                    ? `${scoped.nodes.filter((n) => n.type === 'job').length} jobs, ${datasets.length} datasets`
-                    : `${datasets.length} datasets, ${columnCount} columns, ${scoped.columnEdges.length} column edges`}
-                </p>
-              )}
-            </div>
-          )}
-        </aside>
+          </aside>
+        )}
       </main>
     </div>
   );

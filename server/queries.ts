@@ -17,13 +17,15 @@ export const graphQueries = (available: AvailableColumns) => ({
   jobs: `
     SELECT ${q(s.job.namespace)} AS namespace, ${q(s.job.name)} AS name,
            ${opt(available.job, s.job.title, 'title')},
-           ${opt(available.job, s.job.description, 'description')}
+           ${opt(available.job, s.job.description, 'description')},
+           ${opt(available.job, s.job.archetype, 'archetype')}
     FROM ${q(s.job.table)}`,
 
   datasets: `
     SELECT ${q(s.dataset.namespace)} AS namespace, ${q(s.dataset.name)} AS name,
            ${opt(available.dataset, s.dataset.title, 'title')},
-           ${opt(available.dataset, s.dataset.description, 'description')}
+           ${opt(available.dataset, s.dataset.description, 'description')},
+           ${opt(available.dataset, s.dataset.archetype, 'archetype')}
     FROM ${q(s.dataset.table)}`,
 
   reads: `

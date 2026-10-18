@@ -26,18 +26,26 @@ export const inHandle = (field: string) => `in:${field}`;
 export const outHandle = (field: string) => `out:${field}`;
 
 const nodeLabel = (title: string | null, name: string) => title ?? name;
-const nodeTooltip = (title: string | null, name: string, namespace: string, description: string | null) =>
-  [title && title !== name ? title : null, name, namespace, description].filter(Boolean).join('\n');
+const nodeTooltip = (
+  title: string | null,
+  name: string,
+  namespace: string,
+  description: string | null,
+  archetype: string | null,
+) =>
+  [title && title !== name ? title : null, name, namespace, archetype, description].filter(Boolean).join('\n');
+const archetypeClass = (archetype: string | null) => (archetype ? ' has-archetype' : '');
 
 export function DatasetNode({ data }: NodeProps<DatasetFlowNode>) {
   return (
     <div
-      className={`node dataset role-${data.role}${data.dim ? ' dim' : ''}`}
-      title={nodeTooltip(data.title, data.name, data.namespace, data.description)}
+      className={`node dataset role-${data.role}${data.dim ? ' dim' : ''}${archetypeClass(data.archetype)}`}
+      title={nodeTooltip(data.title, data.name, data.namespace, data.description, data.archetype)}
     >
       <Handle type="target" position={Position.Left} style={handleStyle} />
       <div className="node-name">{nodeLabel(data.title, data.name)}</div>
       <div className="node-ns">{data.namespace}</div>
+      {data.archetype && <span className="archetype-badge">{data.archetype}</span>}
       <Handle type="source" position={Position.Right} style={handleStyle} />
     </div>
   );
@@ -46,14 +54,15 @@ export function DatasetNode({ data }: NodeProps<DatasetFlowNode>) {
 export function JobNode({ data }: NodeProps<JobFlowNode>) {
   return (
     <div
-      className={`node job role-${data.role}${data.dim ? ' dim' : ''}`}
-      title={nodeTooltip(data.title, data.name, data.namespace, data.description)}
+      className={`node job role-${data.role}${data.dim ? ' dim' : ''}${archetypeClass(data.archetype)}`}
+      title={nodeTooltip(data.title, data.name, data.namespace, data.description, data.archetype)}
     >
       <Handle type="target" position={Position.Left} style={handleStyle} />
       <div className="node-text">
         <div className="node-name">{nodeLabel(data.title, data.name)}</div>
         <div className="node-ns">{data.namespace}</div>
       </div>
+      {data.archetype && <span className="archetype-badge">{data.archetype}</span>}
       <Handle type="source" position={Position.Right} style={handleStyle} />
     </div>
   );
@@ -67,9 +76,13 @@ export function TableNode({ id, data }: NodeProps<TableFlowNode>) {
 
   return (
     <div className={`table-node role-${data.role}${data.dim ? ' dim' : ''}`}>
-      <div className="table-head" title={nodeTooltip(data.title, data.name, data.namespace, data.description)}>
+      <div
+        className={`table-head${archetypeClass(data.archetype)}`}
+        title={nodeTooltip(data.title, data.name, data.namespace, data.description, data.archetype)}
+      >
         <div className="node-name">{nodeLabel(data.title, data.name)}</div>
         <div className="node-ns">{data.namespace}</div>
+        {data.archetype && <span className="archetype-badge">{data.archetype}</span>}
       </div>
       <ul className="table-fields">
         {data.fields.length === 0 && <li className="table-field empty">No column metadata</li>}

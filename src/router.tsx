@@ -1,6 +1,7 @@
 import { createRootRoute, createRoute, createRouter, stripSearchParams } from '@tanstack/react-router';
 import App from './App.tsx';
-import { defaultSearch, parseSearch } from './search.ts';
+import NodesPage from './NodesPage.tsx';
+import { defaultNodesSearch, defaultSearch, parseNodesSearch, parseSearch } from './search.ts';
 
 const rootRoute = createRootRoute();
 
@@ -12,7 +13,15 @@ const indexRoute = createRoute({
   component: App,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute]);
+const nodesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/nodes',
+  validateSearch: parseNodesSearch,
+  search: { middlewares: [stripSearchParams(defaultNodesSearch)] },
+  component: NodesPage,
+});
+
+const routeTree = rootRoute.addChildren([indexRoute, nodesRoute]);
 
 export const router = createRouter({ routeTree });
 

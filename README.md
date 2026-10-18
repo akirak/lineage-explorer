@@ -28,8 +28,8 @@ The explorer models lineage only; it does not read runs or run events.
 
 | Table | Columns used |
 |---|---|
-| job | namespace, name, optional title, description |
-| dataset | namespace, name, optional title, description |
+| job | namespace, name, optional title, description, archetype |
+| dataset | namespace, name, optional title, description, archetype |
 | job_input | job namespace, job name, dataset namespace, dataset name |
 | job_output | job namespace, job name, dataset namespace, dataset name |
 | view | view dataset namespace + name, base dataset namespace + name |
@@ -50,6 +50,12 @@ The job columns may be NULL when the producing job is unknown.
 absent the explorer falls back to the `name`, and when present the title is shown as
 the node label (with the description in the tooltip and details panel).
 
+`archetype` on `job` and `dataset` is an optional, presentation-only label such as
+`source`, `staging`, `mart`, or `ingestion`. It is shown as a badge on graph nodes,
+in the details panel, and in the **/nodes** table (where the list can also be filtered
+by it). It never affects the lineage graph itself: nodes, edges, and column lineage
+are built without it.
+
 ## Using it
 
 - Switch between **Table lineage** (jobs and datasets) and **Column lineage**
@@ -62,6 +68,7 @@ the node label (with the description in the tooltip and details panel).
   In column mode, solid edges are direct transformations and dashed edges are indirect ones (joins, filters, grouping).
 - "Show only this lineage" hides everything else and re-lays out the graph. In column mode it also hides unrelated columns.
 - Search by name or namespace (and column name in column mode); filter by namespace; reload to re-query the database.
+- **/nodes** lists every job and dataset in a table. Filter by text, namespace, type, or archetype; the filters live in the URL (`q`, `namespace`, `type`, `archetype`). Each row has a **Graph →** link that opens that node in the lineage graph.
 - The side panel lists a job's inputs and outputs, a dataset's producers, consumers, and columns,
   and the columns that a column derives from and feeds, with each transformation and its job.
 - Views over tables or other views in the same database are drawn as dashed dataset -> dataset

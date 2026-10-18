@@ -11,10 +11,10 @@ import {
   type Edge,
   type Node,
 } from '@xyflow/react';
-import { useNavigate, useSearch } from '@tanstack/react-router';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import type { ColumnEdge, DatasetField, DatasetNode, Graph, LineageEdge, LineageNode } from '../shared/types.ts';
-import { fetchGraph } from './api.ts';
 import type { ExplorerSearch, Mode } from './search.ts';
+import { useGraph } from './useGraph.ts';
 import { adjacency, layoutNodes, tableHeight, traverse, NODE_W, NODE_H, TABLE_W } from './layout.ts';
 import { inHandle, nodeTypes, outHandle, type LineageFlowNode, type Role, type TableFlowNode } from './nodes.tsx';
 
@@ -58,9 +58,7 @@ function Explorer() {
   const { mode, namespace, selected, isolate } = useSearch({ from: '/' });
   const navigate = useNavigate({ from: '/' });
   const pendingCenter = useRef<string | null>(null);
-  const [graph, setGraph] = useState<Graph | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { graph, error, loading, reload } = useGraph();
   const [query, setQuery] = useState('');
   const selectedId = selected || null;
 
@@ -77,22 +75,6 @@ function Explorer() {
   );
 
   const select = useCallback((id: string | null) => updateSearch({ selected: id ?? '' }), [updateSearch]);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setGraph(await fetchGraph());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   const setMode = (next: Mode) => {
     if (next === mode) return;
@@ -312,7 +294,7 @@ function Explorer() {
     const out: SearchMatch[] = [];
     for (const n of scoped.nodes) {
       if (mode === 'column' && n.type === 'job') continue;
-      if (hit(n.name, n.namespace, n.title ?? '', n.description ?? '')) out.push({ id: n.id, kind: n.type, name: n.name, context: n.namespace });
+      if (hit(n.name, n.namespace, n.title ?? '', n.description ?? '', n.archetype ?? '')) out.push({ id: n.id, kind: n.type, name: n.name, context: n.namespace });
     }
     if (mode === 'column') {
       for (const d of datasets) {
@@ -345,6 +327,14 @@ function Explorer() {
     <div className="app">
       <header className="topbar">
         <h1>Lineage explorer</h1>
+        <nav className="nav" aria-label="Views">
+          <Link to="/" className="nav-link on">
+            Graph
+          </Link>
+          <Link to="/nodes" className="nav-link">
+            Nodes
+          </Link>
+        </nav>
         <div className="segmented" role="radiogroup" aria-label="Lineage level">
           {(['table', 'column'] as const).map((m) => (
             <button
@@ -391,7 +381,7 @@ function Explorer() {
             ))}
           </select>
         </label>
-        <button className="btn" onClick={load} disabled={loading}>
+        <button className="btn" onClick={reload} disabled={loading}>
           {loading ? 'Loading…' : 'Reload from database'}
         </button>
       </header>
@@ -511,9 +501,14 @@ function Details(props: DetailsProps) {
     <div className="details">
       <div className="details-head">
         <span className={`kind kind-${kind}`}>{kind}</span>
-        <button className="icon-btn" onClick={onClose} aria-label="Close details">
-          ×
-        </button>
+        <div className="details-head-actions">
+          {!isColumn && selection.node.archetype && (
+            <span className="archetype-badge static">{selection.node.archetype}</span>
+          )}
+          <button className="icon-btn" onClick={onClose} aria-label="Close details">
+            ×
+          </button>
+        </div>
       </div>
       <h2 className="mono">{heading}</h2>
       {isColumn ? (

@@ -5,6 +5,7 @@ export type JobNode = {
   name: string;
   title: string | null;
   description: string | null;
+  archetype: string | null;
 };
 
 export type DatasetField = {
@@ -20,6 +21,7 @@ export type DatasetNode = {
   name: string;
   title: string | null;
   description: string | null;
+  archetype: string | null;
   fields: DatasetField[];
 };
 

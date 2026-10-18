@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
@@ -39,6 +41,7 @@ interface NameRow {
   name: string;
   title: string | null;
   description: string | null;
+  archetype: string | null;
 }
 
 interface IoRow {
@@ -88,22 +91,22 @@ async function buildGraph(): Promise<Graph> {
   ]);
 
   const nodes = new Map<string, LineageNode>();
-  const addJob = (namespace: string, name: string, title: string | null = null, description: string | null = null) => {
+  const addJob = (namespace: string, name: string, title: string | null = null, description: string | null = null, archetype: string | null = null) => {
     const id = jobId(namespace, name);
-    if (!nodes.has(id)) nodes.set(id, { id, type: 'job', namespace, name, title, description });
+    if (!nodes.has(id)) nodes.set(id, { id, type: 'job', namespace, name, title, description, archetype });
     return id;
   };
-  const addDataset = (namespace: string, name: string, title: string | null = null, description: string | null = null) => {
+  const addDataset = (namespace: string, name: string, title: string | null = null, description: string | null = null, archetype: string | null = null) => {
     const id = datasetId(namespace, name);
-    if (!nodes.has(id)) nodes.set(id, { id, type: 'dataset', namespace, name, title, description, fields: [] });
+    if (!nodes.has(id)) nodes.set(id, { id, type: 'dataset', namespace, name, title, description, archetype, fields: [] });
     return nodes.get(id) as DatasetNode;
   };
   const addField = (dataset: DatasetNode, field: DatasetField) => {
     if (!dataset.fields.some((f) => f.name === field.name)) dataset.fields.push(field);
   };
 
-  jobs.forEach((j) => addJob(j.namespace, j.name, j.title, j.description));
-  datasets.forEach((d) => addDataset(d.namespace, d.name, d.title, d.description));
+  jobs.forEach((j) => addJob(j.namespace, j.name, j.title, j.description, j.archetype));
+  datasets.forEach((d) => addDataset(d.namespace, d.name, d.title, d.description, d.archetype));
   for (const f of fields) {
     addField(addDataset(f.dataset_namespace, f.dataset_name), {
       name: f.name,
@@ -168,7 +171,13 @@ app.onError((err, c) => {
 app.get('/api/graph', async (c) => c.json(await buildGraph()));
 
 if (process.env.NODE_ENV === 'production') {
-  app.use('*', serveStatic({ root: fileURLToPath(new URL('../dist', import.meta.url)) }));
+  const distRoot = fileURLToPath(new URL('../dist', import.meta.url));
+  const indexHtml = readFileSync(join(distRoot, 'index.html'), 'utf8');
+  app.use('*', serveStatic({ root: distRoot }));
+  // Client-side routes (e.g. /nodes) have no file on disk; serve the app shell.
+  app.notFound((c) =>
+    c.req.path.startsWith('/api/') ? c.json<ApiError>({ error: 'Not found' }, 404) : c.html(indexHtml),
+  );
 }
 
 serve({ fetch: app.fetch, port: PORT }, () => console.log(`Lineage API on http://localhost:${PORT} (db: ${DB_PATH})`));

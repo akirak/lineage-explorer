@@ -1,6 +1,6 @@
 -- Builds a small throwaway DuckDB database that matches server/schema.ts,
 -- so you can try the explorer before pointing it at your own database.
---   duckdb sample.duckdb < scripts/sample-db.sql
+--   duckdb sample.duckdb < data/build-db.sql
 
 CREATE OR REPLACE TABLE job (namespace VARCHAR, name VARCHAR, title VARCHAR, description VARCHAR, archetype VARCHAR);
 CREATE OR REPLACE TABLE dataset (namespace VARCHAR, name VARCHAR, title VARCHAR, description VARCHAR, archetype VARCHAR);

@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "sample": "duckdb openlineage.duckdb < scripts/sample-db.sql",
+    "sample": "duckdb openlineage.duckdb < data/build-db.sql",
     "validate": "tsx scripts/validate.ts",
     "dev": "concurrently -k -n api,web \"tsx watch server/index.ts\" \"vite\"",
     "build": "vite build",

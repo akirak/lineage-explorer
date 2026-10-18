@@ -16,9 +16,16 @@ DUCKDB_PATH=/path/to/openlineage.duckdb npm run dev   # http://localhost:5173
 
 Production: `npm run build && DUCKDB_PATH=... npm start` (serves on http://localhost:3001).
 
+During `npm run dev`, editing any file under `data/` rebuilds the database and
+reloads the browser. The directory is watched by a small Vite plugin
+(`plugins/rebuild-db.ts`) and defaults to `data/` in the workspace; change it with
+`rebuildDatabase({ dir: '...' })` in `vite.config.ts`. The plugin runs every
+`.sql` file it finds under that directory, so those files are the definition of
+the database.
+
 Type-check the server and the app with `npm run typecheck`. API response types shared by both live in `shared/types.ts`.
 
-No database yet? `duckdb sample.duckdb < scripts/sample-db.sql` creates a small one
+No database yet? `duckdb sample.duckdb < data/build-db.sql` creates a small one
 (the [DuckDB CLI](https://duckdb.org/docs/installation/) is in the Nix dev shell).
 
 ## Point it at your tables

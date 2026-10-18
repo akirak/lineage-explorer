@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Hono } from 'hono';
@@ -12,8 +12,8 @@ import { schema as s } from './schema.ts';
 const DB_PATH = process.env.DUCKDB_PATH || process.argv[2] || './openlineage.duckdb';
 const PORT = Number(process.env.PORT || 3001);
 
-const instance = await DuckDBInstance.create(DB_PATH, { access_mode: 'READ_ONLY' });
-const conn = await instance.connect();
+let instance = await DuckDBInstance.create(DB_PATH, { access_mode: 'READ_ONLY' });
+let conn = await instance.connect();
 
 const all = async <T>(sql: string, params?: DuckDBValue[]): Promise<T[]> => {
   const reader = await conn.runAndReadAll(sql, params);
@@ -28,13 +28,50 @@ const tableColumns = async (table: string): Promise<Set<string>> => {
   return new Set(rows.map((r) => r.column_name));
 };
 
-// Optional title/description columns are selected only when they exist.
-const availableColumns = {
+const loadAvailableColumns = async () => ({
   job: await tableColumns(s.job.table),
   dataset: await tableColumns(s.dataset.table),
+});
+
+// Optional title/description columns are selected only when they exist.
+let availableColumns = await loadAvailableColumns();
+
+let queries = graphQueries(availableColumns);
+
+const modifiedTime = (file: string): number => {
+  try {
+    return statSync(file).mtimeMs;
+  } catch {
+    return 0;
+  }
 };
 
-const queries = graphQueries(availableColumns);
+let dbMtime = modifiedTime(DB_PATH);
+let reloading: Promise<void> | null = null;
+
+/**
+ * The Vite dev server rebuilds the database when `data/` changes. Reopen the
+ * read-only connection when the file is replaced so the explorer serves the new
+ * data without restarting the API server.
+ */
+function reloadDatabaseIfChanged(): Promise<void> {
+  if (reloading) return reloading;
+  const mtime = modifiedTime(DB_PATH);
+  if (mtime === dbMtime) return Promise.resolve();
+  reloading = (async () => {
+    try {
+      instance.closeSync();
+      instance = await DuckDBInstance.create(DB_PATH, { access_mode: 'READ_ONLY' });
+      conn = await instance.connect();
+      availableColumns = await loadAvailableColumns();
+      queries = graphQueries(availableColumns);
+      dbMtime = mtime;
+    } finally {
+      reloading = null;
+    }
+  })();
+  return reloading;
+}
 
 interface NameRow {
   namespace: string;
@@ -80,6 +117,7 @@ const jobId = (ns: string, name: string) => `job:${ns}\u0000${name}`;
 const datasetId = (ns: string, name: string) => `dataset:${ns}\u0000${name}`;
 
 async function buildGraph(): Promise<Graph> {
+  await reloadDatabaseIfChanged();
   const [jobs, datasets, reads, writes, fields, columnLineage, views] = await Promise.all([
     all<NameRow>(queries.jobs),
     all<NameRow>(queries.datasets),

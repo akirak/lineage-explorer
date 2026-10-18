@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -11,8 +11,10 @@ import {
   type Edge,
   type Node,
 } from '@xyflow/react';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import type { ColumnEdge, DatasetField, DatasetNode, Graph, LineageEdge, LineageNode } from '../shared/types.ts';
 import { fetchGraph } from './api.ts';
+import type { ExplorerSearch, Mode } from './search.ts';
 import { adjacency, layoutNodes, tableHeight, traverse, NODE_W, NODE_H, TABLE_W } from './layout.ts';
 import { inHandle, nodeTypes, outHandle, type LineageFlowNode, type Role, type TableFlowNode } from './nodes.tsx';
 
@@ -21,15 +23,11 @@ const EDGE_ACTIVE = '#0d6b62';
 const EDGE_VIEW = '#8b6bb8';
 const EDGE_VIEW_ACTIVE = '#5b3d8f';
 
-type Mode = 'table' | 'column';
-
 const colKey = (datasetId: string, field: string) => `${datasetId}\u0001${field}`;
 const splitColKey = (key: string) => {
   const i = key.lastIndexOf('\u0001');
   return i < 0 ? null : { datasetId: key.slice(0, i), field: key.slice(i + 1) };
 };
-
-const initialMode = (): Mode => (new URLSearchParams(window.location.search).get('mode') === 'column' ? 'column' : 'table');
 
 const transformationLabel = (e: ColumnEdge) =>
   [e.transformationType, e.transformationSubtype].filter(Boolean).join(' · ') || 'Unknown transformation';
@@ -57,14 +55,28 @@ function edgeStyle(active: boolean, hasSelection: boolean, dashed = false, view 
 
 function Explorer() {
   const { setCenter, fitView } = useReactFlow();
+  const { mode, namespace, selected, isolate } = useSearch({ from: '/' });
+  const navigate = useNavigate({ from: '/' });
+  const pendingCenter = useRef<string | null>(null);
   const [graph, setGraph] = useState<Graph | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [mode, setModeState] = useState<Mode>(initialMode);
-  const [namespace, setNamespace] = useState('all');
   const [query, setQuery] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [isolate, setIsolate] = useState(false);
+  const selectedId = selected || null;
+
+  const updateSearch = useCallback(
+    (patch: Partial<ExplorerSearch> | ((prev: ExplorerSearch) => Partial<ExplorerSearch>)) =>
+      navigate({
+        search: (prev) => {
+          const current = prev as ExplorerSearch;
+          return { ...current, ...(typeof patch === 'function' ? patch(current) : patch) };
+        },
+        replace: true,
+      }),
+    [navigate],
+  );
+
+  const select = useCallback((id: string | null) => updateSearch({ selected: id ?? '' }), [updateSearch]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -84,17 +96,17 @@ function Explorer() {
 
   const setMode = (next: Mode) => {
     if (next === mode) return;
-    // A selected column maps to its dataset in table mode; a selected job has no counterpart in column mode.
-    if (next === 'table' && selectedId) {
-      const col = splitColKey(selectedId);
-      if (col) setSelectedId(col.datasetId);
-    }
-    if (next === 'column' && selectedId?.startsWith('job:')) setSelectedId(null);
-    setModeState(next);
-    const url = new URL(window.location.href);
-    if (next === 'column') url.searchParams.set('mode', 'column');
-    else url.searchParams.delete('mode');
-    window.history.replaceState(null, '', url);
+    updateSearch((prev) => {
+      let selected = prev.selected;
+      // A selected column maps to its dataset in table mode; a selected job has no counterpart in column mode.
+      if (next === 'table') {
+        const col = splitColKey(selected);
+        if (col) selected = col.datasetId;
+      } else if (selected.startsWith('job:')) {
+        selected = '';
+      }
+      return { mode: next, selected };
+    });
   };
 
   const namespaces = useMemo(
@@ -229,6 +241,26 @@ function Explorer() {
     );
   }, [mode, tableVisible, columnVisible, datasetLinks]);
 
+  const centerOn = useCallback(
+    (id: string) => {
+      const nodeId = splitColKey(id)?.datasetId ?? id;
+      const n = positioned.find((p) => p.id === nodeId);
+      if (!n) return;
+      const [w, h] =
+        n.type === 'table' ? [TABLE_W, tableHeight((n.data as TableFlowNode['data']).fields.length)] : [NODE_W, NODE_H];
+      setCenter(n.position.x + w / 2, n.position.y + h / 2, { zoom: 1, duration: 400 });
+    },
+    [positioned, setCenter],
+  );
+
+  // Center after the graph has re-laid out, e.g. when focusNode switches lineage mode.
+  useEffect(() => {
+    const id = pendingCenter.current;
+    if (!id) return;
+    pendingCenter.current = null;
+    centerOn(id);
+  }, [selectedId, centerOn]);
+
   const rfNodes = useMemo<Node[]>(
     () =>
       positioned.map((n) => {
@@ -293,20 +325,19 @@ function Explorer() {
   }, [query, scoped, datasets, mode]);
 
   const focusNode = (id: string) => {
-    if (mode === 'column' && id.startsWith('job:')) setMode('table');
-    setSelectedId(id);
     setQuery('');
-    const nodeId = splitColKey(id)?.datasetId ?? id;
-    const n = positioned.find((p) => p.id === nodeId);
-    if (!n) return;
-    const [w, h] =
-      n.type === 'table' ? [TABLE_W, tableHeight((n.data as TableFlowNode['data']).fields.length)] : [NODE_W, NODE_H];
-    setCenter(n.position.x + w / 2, n.position.y + h / 2, { zoom: 1, duration: 400 });
+    const nextMode: Mode = mode === 'column' && id.startsWith('job:') ? 'table' : mode;
+    if (nextMode === mode && id === selectedId) {
+      centerOn(id);
+      return;
+    }
+    pendingCenter.current = id;
+    updateSearch({ mode: nextMode, selected: id });
   };
 
   const onNodeClick = (event: MouseEvent, n: Node) => {
     const field = (event.target as HTMLElement).closest('[data-field]')?.getAttribute('data-field');
-    setSelectedId(mode === 'column' && field != null ? colKey(n.id, field) : n.id);
+    select(mode === 'column' && field != null ? colKey(n.id, field) : n.id);
   };
 
 
@@ -351,7 +382,7 @@ function Explorer() {
         </div>
         <label className="field">
           <span>Namespace</span>
-          <select value={namespace} onChange={(e) => setNamespace(e.target.value)}>
+          <select value={namespace} onChange={(e) => updateSearch({ namespace: e.target.value })}>
             <option value="all">All namespaces</option>
             {namespaces.map((n) => (
               <option key={n} value={n}>
@@ -388,7 +419,7 @@ function Explorer() {
             minZoom={0.1}
             maxZoom={1.75}
             onNodeClick={onNodeClick}
-            onPaneClick={() => setSelectedId(null)}
+            onPaneClick={() => select(null)}
             proOptions={{ hideAttribution: true }}
           >
             <Background gap={24} size={1} color="#d6dcdc" />
@@ -434,9 +465,9 @@ function Explorer() {
               upstreamCount={upstream.size}
               downstreamCount={downstream.size}
               isolate={isolate}
-              onToggleIsolate={() => setIsolate((v) => !v)}
+              onToggleIsolate={() => updateSearch((prev) => ({ isolate: !prev.isolate }))}
               onSelect={focusNode}
-              onClose={() => setSelectedId(null)}
+              onClose={() => select(null)}
             />
           </aside>
         )}

@@ -2,7 +2,10 @@
 
 A React Flow explorer for OpenLineage metadata stored in DuckDB. A small Hono
 server (TypeScript, run with tsx) reads the database (read-only) and the React
-app draws jobs and datasets as a left-to-right lineage graph.
+app draws jobs and datasets as a left-to-right lineage graph. [TanStack Router]
+keeps the view in the URL so it can be shared or reloaded.
+
+[TanStack Router]: https://tanstack.com/router
 
 ## Run it
 
@@ -50,8 +53,11 @@ the node label (with the description in the tooltip and details panel).
 ## Using it
 
 - Switch between **Table lineage** (jobs and datasets) and **Column lineage**
-  (datasets drawn as tables, edges between columns) in the top bar. `?mode=column`
-  opens column mode directly.
+  (datasets drawn as tables, edges between columns) in the top bar.
+- The current view is stored in the query string, so the URL can be shared or
+  reloaded: `mode=column` (table is the default), `namespace=<namespace>`,
+  `selected=<node or column id>`, and `isolate=true`. Default values are omitted.
+  `?mode=column` opens column mode directly.
 - Click a node, or a column in column mode, to highlight its upstream (blue) and downstream (copper) lineage.
   In column mode, solid edges are direct transformations and dashed edges are indirect ones (joins, filters, grouping).
 - "Show only this lineage" hides everything else and re-lays out the graph. In column mode it also hides unrelated columns.

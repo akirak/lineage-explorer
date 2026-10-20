@@ -37,6 +37,19 @@ button, input, select { font: inherit; color: inherit; }
 .field { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--ink-2); }
 .field select { height: 36px; min-width: 180px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
 
+.namespace-picker { position: relative; }
+.namespace-picker .picker-toggle { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 36px; min-width: 180px; max-width: 260px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); cursor: pointer; }
+.namespace-picker .picker-toggle:hover { border-color: var(--teal); }
+.namespace-picker .picker-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.namespace-picker .picker-caret { flex: none; color: var(--ink-2); font-size: 11px; }
+.picker-menu { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; min-width: 220px; max-width: 320px; max-height: 280px; overflow-y: auto; padding: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 24px rgba(23, 33, 37, 0.12); }
+.picker-option { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.picker-option:hover { background: var(--paper); }
+.picker-option input { margin: 0; accent-color: var(--teal); }
+.picker-option .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-divider { height: 1px; margin: 4px 0; background: var(--line); }
+.picker-empty { margin: 0; padding: 4px 8px; }
+
 .btn { height: 36px; padding: 0 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); cursor: pointer; font-weight: 500; }
 .btn:hover:not(:disabled) { border-color: var(--teal); color: var(--teal); }
 .btn:disabled { opacity: 0.6; cursor: default; }

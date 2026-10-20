@@ -153,7 +153,7 @@ export default function NodesPage() {
                       <td className="actions-cell">
                         <Link
                           to="/"
-                          search={{ selected: n.id, namespace }}
+                          search={{ selected: n.id, namespaces: namespace === 'all' ? [] : [namespace] }}
                           className="btn small"
                           aria-label={`Browse ${n.name} in the graph`}
                         >

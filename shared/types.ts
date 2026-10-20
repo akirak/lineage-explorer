@@ -60,3 +60,16 @@ export type Graph = {
 export type ApiError = {
   error: string;
 };
+
+/** A parquet build the explorer can serve. */
+export type DatabaseInfo = {
+  /** Stable identifier: the parquet file name. */
+  id: string;
+  /** Last modification time, used to order and label databases. */
+  builtAt: number;
+};
+
+export type DatabasesResponse = {
+  databases: DatabaseInfo[];
+  current: string | null;
+};

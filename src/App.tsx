@@ -17,6 +17,7 @@ import type { ExplorerSearch, Mode } from './search.ts';
 import { useGraph } from './useGraph.ts';
 import { adjacency, layoutNodes, tableHeight, traverse, NODE_W, NODE_H, TABLE_W } from './layout.ts';
 import { inHandle, nodeTypes, outHandle, type LineageFlowNode, type Role, type TableFlowNode } from './nodes.tsx';
+import NamespacePicker from './NamespacePicker.tsx';
 
 const EDGE_IDLE = '#9aa6a9';
 const EDGE_ACTIVE = '#0d6b62';
@@ -55,10 +56,17 @@ function edgeStyle(active: boolean, hasSelection: boolean, dashed = false, view 
 
 function Explorer() {
   const { setCenter, fitView } = useReactFlow();
-  const { mode, namespace, selected, isolate } = useSearch({ from: '/' });
+  const { mode, namespaces, selected, isolate } = useSearch({ from: '/' });
   const navigate = useNavigate({ from: '/' });
   const pendingCenter = useRef<string | null>(null);
   const { graph, error, loading, reload } = useGraph();
+
+  // Reset to the newest parquet build, then reload it. Clearing the
+  // `lineage_db` cookie makes the server fall back to the latest revision.
+  const refreshDatabase = useCallback(async () => {
+    await fetch('/api/databases', { method: 'DELETE' });
+    await reload();
+  }, [reload]);
   const [query, setQuery] = useState('');
   const selectedId = selected || null;
 
@@ -91,22 +99,23 @@ function Explorer() {
     });
   };
 
-  const namespaces = useMemo(
+  const availableNamespaces = useMemo(
     () => (graph ? [...new Set(graph.nodes.map((n) => n.namespace))].sort() : []),
     [graph],
   );
 
   const scoped = useMemo<Graph>(() => {
     if (!graph) return { nodes: [], edges: [], columnEdges: [] };
-    if (namespace === 'all') return graph;
-    const nodes = graph.nodes.filter((n) => n.namespace === namespace);
+    if (namespaces.length === 0) return graph;
+    const wanted = new Set(namespaces);
+    const nodes = graph.nodes.filter((n) => wanted.has(n.namespace));
     const ids = new Set(nodes.map((n) => n.id));
     return {
       nodes,
       edges: graph.edges.filter((e) => ids.has(e.source) && ids.has(e.target)),
       columnEdges: graph.columnEdges.filter((e) => ids.has(e.source) && ids.has(e.target)),
     };
-  }, [graph, namespace]);
+  }, [graph, namespaces]);
 
   const nodeById = useMemo(() => new Map(scoped.nodes.map((n) => [n.id, n])), [scoped]);
   const datasets = useMemo(() => scoped.nodes.filter((n): n is DatasetNode => n.type === 'dataset'), [scoped]);
@@ -372,17 +381,14 @@ function Explorer() {
         </div>
         <label className="field">
           <span>Namespace</span>
-          <select value={namespace} onChange={(e) => updateSearch({ namespace: e.target.value })}>
-            <option value="all">All namespaces</option>
-            {namespaces.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
+          <NamespacePicker
+            namespaces={availableNamespaces}
+            selected={namespaces}
+            onChange={(next) => updateSearch({ namespaces: next })}
+          />
         </label>
-        <button className="btn" onClick={reload} disabled={loading}>
-          {loading ? 'Loading…' : 'Reload from database'}
+        <button className="btn" onClick={refreshDatabase} disabled={loading}>
+          {loading ? 'Loading…' : 'Refresh the database'}
         </button>
       </header>
 

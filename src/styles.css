@@ -177,6 +177,8 @@ button, input, select { font: inherit; color: inherit; }
 .nodes-table tbody tr:last-child td { border-bottom: 0; }
 .nodes-table tbody tr:hover { background: var(--paper); }
 .name-cell { font-size: 12.5px; }
+.type-label { display: flex; flex-direction: column; }
+.type-label-name { font-size: 0.85em; }
 .desc-cell { max-width: 420px; color: var(--ink-2); }
 .actions-cell { text-align: right; white-space: nowrap; }
 .btn.small { display: inline-flex; align-items: center; height: 28px; padding: 0 10px; font-size: 12.5px; text-decoration: none; }

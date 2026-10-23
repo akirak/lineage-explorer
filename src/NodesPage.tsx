@@ -4,7 +4,18 @@ import type { LineageNode } from '../shared/types.ts';
 import type { NodesSearch } from './search.ts';
 import { useGraph } from './useGraph.ts';
 
-const typeLabel = (n: LineageNode) => (n.title && n.title !== n.name ? `${n.name} · ${n.title}` : n.name);
+const typeLabel = (n: LineageNode) => (
+  <span className="type-label">
+    {n.title && n.title !== n.name ? (
+      <>
+        <span>{n.title}</span>
+        <span className="mono muted type-label-name">{n.name}</span>
+      </>
+    ) : (
+      <span className="mono">{n.name}</span>
+    )}
+  </span>
+);
 
 export default function NodesPage() {
   const { q, namespace, type, archetype } = useSearch({ from: '/nodes' });

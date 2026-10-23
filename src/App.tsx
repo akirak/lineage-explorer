@@ -489,7 +489,14 @@ function NodeLink({ node, onSelect }: { node: LineageNode | undefined; onSelect:
   if (!node) return null;
   return (
     <button className="link" onClick={() => onSelect(node.id)} title={`${node.namespace}\n${node.name}`}>
-      <span className="mono">{node.name}</span>
+      {node.title && node.title !== node.name ? (
+        <>
+          <span>{node.title}</span>
+          <span className="mono muted small">{node.name}</span>
+        </>
+      ) : (
+        <span className="mono">{node.name}</span>
+      )}
       <span className="muted small">{node.namespace}</span>
     </button>
   );

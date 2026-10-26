@@ -643,7 +643,11 @@ function ColumnDetails({ dataset, field, graph, nodeById, onSelect }: { dataset:
                 </button>
                 <div className="item-meta">
                   <span className={`badge-t${isIndirect(e) ? ' indirect' : ''}`}>{transformationLabel(e)}</span>
-                  {job && <span className="muted small">via {job.name}</span>}
+                  {job && (
+                    <span className="muted small" title={job.description ?? undefined}>
+                      via {job.name}
+                    </span>
+                  )}
                 </div>
               </li>
             );

@@ -200,6 +200,7 @@ interface ColumnLineageRow {
   output_field: string;
   transformation_type: string | null;
   transformation_subtype: string | null;
+  description: string | null;
 }
 
 interface ViewRow {
@@ -297,6 +298,7 @@ async function graphFromDatabase(database: LoadedDatabase): Promise<Graph> {
       job,
       row.transformation_type,
       row.transformation_subtype,
+      row.description,
     ]);
     if (!columnEdges.has(id)) {
       columnEdges.set(id, {
@@ -308,6 +310,7 @@ async function graphFromDatabase(database: LoadedDatabase): Promise<Graph> {
         job,
         transformationType: row.transformation_type ?? null,
         transformationSubtype: row.transformation_subtype ?? null,
+        description: row.description ?? null,
       });
     }
   }

@@ -19,7 +19,8 @@
 // column_lineage follows the OpenLineage columnLineage facet: each output field
 // lists the input fields it derives from, with a transformation type (DIRECT or
 // INDIRECT) and subtype (IDENTITY, TRANSFORMATION, AGGREGATION, JOIN, FILTER, ...).
-// The job columns may be NULL when the producing job is unknown.
+// The job and description columns may be NULL when the producing job or a
+// human-friendly note is unknown.
 // ---------------------------------------------------------------------------
 export const schema = {
   job: { table: 'job', namespace: 'namespace', name: 'name', title: 'title', description: 'description', archetype: 'archetype' },
@@ -65,5 +66,6 @@ export const schema = {
     outputField: 'output_field',
     transformationType: 'transformation_type',
     transformationSubtype: 'transformation_subtype',
+    description: 'description',
   },
 } as const;

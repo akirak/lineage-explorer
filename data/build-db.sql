@@ -11,7 +11,7 @@ CREATE OR REPLACE TABLE column_lineage (
   job_namespace VARCHAR, job_name VARCHAR,
   input_dataset_namespace VARCHAR, input_dataset_name VARCHAR, input_field VARCHAR,
   output_dataset_namespace VARCHAR, output_dataset_name VARCHAR, output_field VARCHAR,
-  transformation_type VARCHAR, transformation_subtype VARCHAR
+  transformation_type VARCHAR, transformation_subtype VARCHAR, description VARCHAR
 );
 -- A view over a table in the same database: no job sits between them, so the
 -- lineage is a direct dataset -> dataset edge (OpenLineage's symlinks facet).
@@ -116,13 +116,14 @@ INSERT INTO column_lineage
 SELECT o.job_namespace, o.job_name,
        i.dataset_namespace, i.dataset_name, f.field_name,
        o.dataset_namespace, o.dataset_name, f.field_name,
-       'DIRECT', 'IDENTITY'
+       'DIRECT', 'IDENTITY',
+       'Copied unchanged from the source system'
 FROM job_input i
 JOIN job_output o USING (job_namespace, job_name)
 JOIN dataset_field f ON f.dataset_namespace = i.dataset_namespace AND f.dataset_name = i.dataset_name
 WHERE i.job_namespace = 'airflow';
 
-INSERT INTO column_lineage VALUES
+INSERT INTO column_lineage (job_namespace, job_name, input_dataset_namespace, input_dataset_name, input_field, output_dataset_namespace, output_dataset_name, output_field, transformation_type, transformation_subtype) VALUES
   ('spark', 'build_orders_clean', 's3://lake', 'raw/orders', 'order_id', 's3://lake', 'clean/orders', 'order_id', 'DIRECT', 'IDENTITY'),
   ('spark', 'build_orders_clean', 's3://lake', 'raw/orders', 'customer_id', 's3://lake', 'clean/orders', 'customer_id', 'DIRECT', 'IDENTITY'),
   ('spark', 'build_orders_clean', 's3://lake', 'raw/customers', 'country', 's3://lake', 'clean/orders', 'customer_country', 'DIRECT', 'IDENTITY'),
@@ -147,14 +148,14 @@ INSERT INTO column_lineage VALUES
 
 -- View columns derive from their base tables and views; there is no job.
 -- marts.revenue_daily_us passes the base table's columns through unchanged.
-INSERT INTO column_lineage VALUES
+INSERT INTO column_lineage (job_namespace, job_name, input_dataset_namespace, input_dataset_name, input_field, output_dataset_namespace, output_dataset_name, output_field, transformation_type, transformation_subtype) VALUES
   (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'order_date', 'warehouse', 'marts.revenue_daily_us', 'order_date', 'DIRECT', 'IDENTITY'),
   (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'country', 'warehouse', 'marts.revenue_daily_us', 'country', 'DIRECT', 'IDENTITY'),
   (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'revenue_usd', 'warehouse', 'marts.revenue_daily_us', 'revenue_usd', 'DIRECT', 'IDENTITY'),
   (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'order_count', 'warehouse', 'marts.revenue_daily_us', 'order_count', 'DIRECT', 'IDENTITY');
 
 -- marts.country_kpis aggregates both base tables per country and joins them on country.
-INSERT INTO column_lineage VALUES
+INSERT INTO column_lineage (job_namespace, job_name, input_dataset_namespace, input_dataset_name, input_field, output_dataset_namespace, output_dataset_name, output_field, transformation_type, transformation_subtype) VALUES
   (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'country', 'warehouse', 'marts.country_kpis', 'country', 'DIRECT', 'IDENTITY'),
   (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'revenue_usd', 'warehouse', 'marts.country_kpis', 'revenue_usd', 'DIRECT', 'AGGREGATION'),
   (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'order_count', 'warehouse', 'marts.country_kpis', 'order_count', 'DIRECT', 'AGGREGATION'),
@@ -165,10 +166,19 @@ INSERT INTO column_lineage VALUES
   (NULL, NULL, 'warehouse', 'marts.customer_ltv', 'country', 'warehouse', 'marts.country_kpis', 'customer_count', 'INDIRECT', 'GROUP_BY');
 
 -- marts.us_revenue_share joins the US view with the daily totals of its base table.
-INSERT INTO column_lineage VALUES
+INSERT INTO column_lineage (job_namespace, job_name, input_dataset_namespace, input_dataset_name, input_field, output_dataset_namespace, output_dataset_name, output_field, transformation_type, transformation_subtype) VALUES
   (NULL, NULL, 'warehouse', 'marts.revenue_daily_us', 'order_date', 'warehouse', 'marts.us_revenue_share', 'order_date', 'DIRECT', 'IDENTITY'),
   (NULL, NULL, 'warehouse', 'marts.revenue_daily_us', 'revenue_usd', 'warehouse', 'marts.us_revenue_share', 'us_revenue_usd', 'DIRECT', 'AGGREGATION'),
   (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'revenue_usd', 'warehouse', 'marts.us_revenue_share', 'total_revenue_usd', 'DIRECT', 'AGGREGATION'),
   (NULL, NULL, 'warehouse', 'marts.revenue_daily_us', 'revenue_usd', 'warehouse', 'marts.us_revenue_share', 'us_share', 'DIRECT', 'TRANSFORMATION'),
   (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'revenue_usd', 'warehouse', 'marts.us_revenue_share', 'us_share', 'DIRECT', 'TRANSFORMATION'),
+  (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'revenue_usd', 'warehouse', 'marts.us_revenue_share', 'us_share', 'DIRECT', 'TRANSFORMATION'),
   (NULL, NULL, 'warehouse', 'marts.revenue_daily', 'order_date', 'warehouse', 'marts.us_revenue_share', 'order_date', 'INDIRECT', 'JOIN');
+
+-- Optional human-friendly notes on a few column edges; the rest stay NULL.
+UPDATE column_lineage SET description = 'Order total converted to USD using the daily FX rate'
+WHERE job_name = 'build_orders_clean' AND output_field = 'amount_usd';
+UPDATE column_lineage SET description = 'Sum of clean order amounts per day and country'
+WHERE job_name = 'build_revenue_daily' AND output_field = 'revenue_usd' AND transformation_type = 'DIRECT';
+UPDATE column_lineage SET description = 'Share of the day''s revenue attributable to the US'
+WHERE output_field = 'us_share';

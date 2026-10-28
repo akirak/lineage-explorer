@@ -649,6 +649,7 @@ function ColumnDetails({ dataset, field, graph, nodeById, onSelect }: { dataset:
                     </span>
                   )}
                 </div>
+                {e.description && <div className="muted small edge-description">{e.description}</div>}
               </li>
             );
           })}

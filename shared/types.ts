@@ -49,6 +49,8 @@ export type ColumnEdge = {
   transformationType: string | null;
   /** IDENTITY, TRANSFORMATION, AGGREGATION, JOIN, FILTER, ... */
   transformationSubtype: string | null;
+  /** Optional human-friendly note about this column-level edge. */
+  description: string | null;
 };
 
 export type Graph = {

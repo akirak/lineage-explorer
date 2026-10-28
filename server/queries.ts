@@ -56,6 +56,7 @@ export const graphQueries = (available: AvailableColumns) => ({
            ${q(cl.outputNamespace)} AS output_namespace, ${q(cl.outputDataset)} AS output_dataset,
            ${q(cl.outputField)} AS output_field,
            ${q(cl.transformationType)} AS transformation_type,
-           ${q(cl.transformationSubtype)} AS transformation_subtype
+           ${q(cl.transformationSubtype)} AS transformation_subtype,
+           CAST(${q(cl.description)} AS VARCHAR) AS description
     FROM ${q(cl.table)}`,
 });

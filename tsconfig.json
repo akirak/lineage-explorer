@@ -15,5 +15,5 @@
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true
   },
-  "include": ["src", "server", "shared", "scripts", "plugins", "vite.config.ts"]
+  "include": ["src", "shared", "scripts", "plugins", "vite.config.ts"]
 }

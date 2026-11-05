@@ -13,7 +13,13 @@
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",
+<<<<<<< HEAD
     "@duckdb/node-api": "1.5.6-r.2",
+||||||| parent of 7376504 (Use the Quack Remote Protocol)
+    "@duckdb/node-api": "1.5.6-r.1",
+=======
+    "@duckdb/duckdb-wasm": "1.33.1-dev57.0",
+>>>>>>> 7376504 (Use the Quack Remote Protocol)
     "@tanstack/react-router": "^1.170.45",
     "@tanstack/react-start": "1.169.3",
     "@xyflow/react": "^12.12.0",
@@ -21,6 +27,7 @@
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
+    "@duckdb/node-api": "1.5.6-r.1",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

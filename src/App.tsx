@@ -61,10 +61,9 @@ function Explorer() {
   const pendingCenter = useRef<string | null>(null);
   const { graph, error, loading, reload } = useGraph();
 
-  // Reset to the newest parquet build, then reload it. Clearing the
-  // `lineage_db` cookie makes the server fall back to the latest revision.
+  // Re-run the queries against the Quack server; in dev the rebuild-db
+  // plugin re-points it at the newest parquet build after every rebuild.
   const refreshDatabase = useCallback(async () => {
-    await fetch('/api/databases', { method: 'DELETE' });
     await reload();
   }, [reload]);
   const [query, setQuery] = useState('');
@@ -395,14 +394,14 @@ function Explorer() {
       <main className="stage">
         {error && (
           <div className="banner error" role="alert">
-            Could not load the lineage graph: {error}. Check the table and column names in server/schema.ts.
+            Could not load the lineage graph: {error}. Check the Quack server (it starts with `pnpm dev`) and the table and column names in shared/schema.ts.
           </div>
         )}
         {!error && !loading && graph && graph.nodes.length === 0 && (
-          <div className="banner">No jobs or datasets found. Check that the database path and tables in server/schema.ts are correct.</div>
+          <div className="banner">No jobs or datasets found. Check that the database path and tables in shared/schema.ts are correct.</div>
         )}
         {!error && !loading && mode === 'column' && graph && graph.nodes.length > 0 && scoped.columnEdges.length === 0 && (
-          <div className="banner">No column lineage recorded for these datasets. Check the column_lineage table in server/schema.ts.</div>
+          <div className="banner">No column lineage recorded for these datasets. Check the column_lineage table in shared/schema.ts.</div>
         )}
 
         <div className="canvas">

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Graph } from '../shared/types.ts';
-import { fetchGraph } from './api.ts';
 
 /** Loads the full lineage graph once per mount and exposes a manual reload. */
 export function useGraph() {
@@ -12,7 +11,10 @@ export function useGraph() {
     setLoading(true);
     setError(null);
     try {
-      setGraph(await fetchGraph());
+      // DuckDB-Wasm only exists in the browser, so the client is imported
+      // lazily: server-side rendering never touches it.
+      const { loadGraph } = await import('./quack.ts');
+      setGraph(await loadGraph());
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

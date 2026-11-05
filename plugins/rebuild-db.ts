@@ -1,15 +1,17 @@
 // ---------------------------------------------------------------------------
-// Vite plugin: rebuild the lineage database when a data directory changes.
+// Vite plugin: rebuild the lineage database when a data directory changes,
+// and serve it over the Quack remote protocol in dev mode.
 //
 // While `vite dev` is running, editing any file under the watched directory
-// rebuilds the database from the `.sql` files it contains, then reloads the
-// browser so the explorer shows the new data.
+// rebuilds the database from the `.sql` files it contains, re-points the
+// Quack server at the new build, then reloads the browser so the explorer
+// shows the new data.
 //
 //   import { rebuildDatabase } from './plugins/rebuild-db.ts';
 //
-//   plugins: [tanstackStart(), react(), rebuildDatabase()]              // watch <root>/data
-//   plugins: [tanstackStart(), react(), rebuildDatabase({ dir: 'sql' })]
-//   plugins: [tanstackStart(), react(), rebuildDatabase({ name: 'lineage', keep: 5 })]
+//   plugins: [tanstackStart(), react(), ...rebuildDatabase()]              // watch <root>/data
+//   plugins: [tanstackStart(), react(), ...rebuildDatabase({ dir: 'sql' })]
+//   plugins: [tanstackStart(), react(), ...rebuildDatabase({ name: 'lineage', keep: 5 })]
 //
 // The default rebuild runs the DuckDB CLI over every `.sql` file found under
 // the watched directory, then stacks every table it created into a single
@@ -18,23 +20,32 @@
 //   table_name VARCHAR, data JSON
 //
 // One parquet file can only hold one table, so stacking them keeps the whole
-// database in a single file. The server (`server/lineage.ts`) turns the stacked
-// rows back into per-table views.
+// database in a single file. The Quack server session turns the stacked rows
+// back into per-table views (shared/views.ts).
 //
 // Each successful rebuild writes a NEW file (`<outDir>/<name>-<timestamp>.parquet`)
-// rather than overwriting the previous one. That lets the UI list the available
-// builds and switch between them; the selected one is remembered in a cookie.
-// Old builds beyond `keep` are pruned after a successful rebuild.
+// rather than overwriting the previous one. Old builds beyond `keep` are
+// pruned after a successful rebuild.
+//
+// The Quack server is a long-lived `duckdb` process that loads the `quack`
+// extension and calls `quack_serve`. It exposes everything its session can
+// see, so after every rebuild the plugin re-issues `CREATE OR REPLACE VIEW`
+// statements for the new parquet file and the next query from the browser
+// sees the updated data. The browser connects with DuckDB-Wasm; the URI and
+// token it needs are injected through the `virtual:quack-config` module
+// (resolved by this plugin in dev, and from `QUACK_URI` / `QUACK_TOKEN` in
+// production builds).
 //
 // The watch directory and the rebuild itself are configurable; pass `build` to
 // replace the SQL-file rebuild with your own generator (e.g. an ingestion
 // command that turns files in `dir` into the database).
 // ---------------------------------------------------------------------------
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { readdir, readFile, rename, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
-import type { Plugin, ResolvedConfig } from 'vite';
+import type { Plugin, ResolvedConfig, ViteDevServer } from 'vite';
+import { duckDbViews, parquetViews } from '../shared/views.ts';
 
 export interface RebuildDatabaseOptions {
   /**
@@ -56,10 +67,35 @@ export interface RebuildDatabaseOptions {
   /** Rebuild once when the dev server starts, in addition to on change. */
   buildOnStart?: boolean;
   /**
+   * Serve the database over the Quack remote protocol while the dev server
+   * runs. Pass `false` to skip it (e.g. when you run your own Quack server).
+   * Options: port, token, hostname, command.
+   */
+  quack?: false | QuackOptions;
+  /**
    * Replace the default SQL-file rebuild. Receives the watched directory, the
    * target parquet path, and the change that triggered it.
    */
   build?: (context: RebuildContext) => void | Promise<void>;
+}
+
+export interface QuackOptions {
+  /** Port the Quack server listens on. Defaults to 9494, Quack's default. */
+  port?: number;
+  /**
+   * Authentication token clients must present. Defaults to a random token
+   * generated once per dev-server start. Pass a fixed one to keep browsers
+   * working across dev-server restarts.
+   */
+  token?: string;
+  /**
+   * Hostname to bind. Quack refuses non-local hostnames unless
+   * `allow_other_hostname` is set, so this stays localhost-only; the option
+   * exists for setups where `localhost` resolves unexpectedly.
+   */
+  hostname?: string;
+  /** DuckDB CLI to run. Defaults to `duckdb` from the PATH. */
+  command?: string;
 }
 
 export interface RebuildContext {
@@ -79,11 +115,35 @@ export interface RebuildContext {
 
 const DEFAULT_DEBOUNCE = 150;
 const DEFAULT_KEEP = 10;
+const DEFAULT_QUACK_PORT = 9494;
 
-export function rebuildDatabase(options: RebuildDatabaseOptions = {}): Plugin {
-  let root = process.cwd();
+/** URI + token the browser needs to reach the Quack server. */
+export interface QuackConfig {
+  uri: string;
+  token: string;
+}
 
-  return {
+const VIRTUAL_MODULE_ID = 'virtual:quack-config';
+const RESOLVED_VIRTUAL_ID = `\0${VIRTUAL_MODULE_ID}`;
+
+export function rebuildDatabase(options: RebuildDatabaseOptions = {}): Plugin[] {
+  const quackOptions: QuackOptions | false = options.quack ?? {};
+  const port = quackOptions ? (quackOptions.port ?? DEFAULT_QUACK_PORT) : DEFAULT_QUACK_PORT;
+  const hostname = quackOptions ? (quackOptions.hostname ?? 'localhost') : 'localhost';
+  // A fresh token per dev-server start; browsers get it through the virtual
+  // module, so nothing has to be configured by hand.
+  const token = quackOptions
+    ? (quackOptions.token ??
+      (typeof globalThis.crypto?.randomUUID === 'function'
+        ? globalThis.crypto.randomUUID().replace(/-/g, '')
+        : `lineage-${Date.now()}`))
+    : '';
+  const live: QuackConfig = { uri: `quack:${hostname}:${port}`, token };
+
+  // ---------------------------------------------------------------------
+  // Dev-only plugin: watch, rebuild, and run the Quack server.
+  // ---------------------------------------------------------------------
+  const servePlugin: Plugin = {
     name: 'rebuild-db',
     apply: 'serve',
 
@@ -91,7 +151,7 @@ export function rebuildDatabase(options: RebuildDatabaseOptions = {}): Plugin {
       root = config.root;
     },
 
-    configureServer(server) {
+    async configureServer(server: ViteDevServer) {
       const dir = path.resolve(root, options.dir ?? 'data');
       const outDir = path.resolve(root, options.outDir ?? 'builds');
       const name = options.name ?? 'lineage';
@@ -103,6 +163,37 @@ export function rebuildDatabase(options: RebuildDatabaseOptions = {}): Plugin {
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
       cleanStaleTempFiles(outDir);
+
+      // Optional legacy single-file database, served instead of the builds.
+      const envDb = process.env.DUCKDB_PATH ? path.resolve(root, process.env.DUCKDB_PATH) : undefined;
+
+      const quack =
+        quackOptions === false
+          ? null
+          : new QuackServer({
+              command: quackOptions.command ?? 'duckdb',
+              uri: live.uri,
+              token,
+              logger,
+            });
+
+      let servedEnvDb = false;
+      const serveDatabase = async (db: string) => {
+        if (!quack) return;
+        // A legacy .duckdb file takes precedence over the parquet builds, as it
+        // did for the old server routes. It is attached once; rebuilds keep
+        // writing parquet files but the server stays on the .duckdb file.
+        if (envDb) {
+          if (servedEnvDb) return;
+          servedEnvDb = true;
+          await quack.serve(duckDbViews(envDb));
+          return;
+        }
+        // A running server just gets the updated view definitions for the new
+        // build; a stopped one is started with them.
+        const views = db.endsWith('.parquet') ? parquetViews(db) : duckDbViews(db);
+        await quack.serve(views);
+      };
 
       let timer: NodeJS.Timeout | undefined;
       let running = false;
@@ -122,6 +213,7 @@ export function rebuildDatabase(options: RebuildDatabaseOptions = {}): Plugin {
           }
           await pruneOld(context.outDir, context.name, keep);
           logger.info(`[rebuild-db] wrote ${displayPath(root, context.db)}`);
+          await serveDatabase(context.db);
           server.ws.send({ type: 'full-reload' });
         } catch (error) {
           logger.error(`[rebuild-db] rebuild failed: ${describe(error)}`);
@@ -158,10 +250,219 @@ export function rebuildDatabase(options: RebuildDatabaseOptions = {}): Plugin {
 
       if (options.buildOnStart) {
         schedule(dir, 'start');
+      } else {
+        // Even without a rebuild, serve whatever build already exists so the
+        // app works on a plain `vite dev` after a previous build.
+        const initial = envDb ?? (await newestBuild(outDir, name));
+        if (initial) void serveDatabase(initial);
+        else if (quack) {
+          logger.warn(
+            `[rebuild-db] no parquet build found under ${displayPath(root, outDir)}; the Quack server will start on the next rebuild`,
+          );
+        }
       }
+
+      server.httpServer?.on('close', () => quack?.stop());
     },
   };
+
+  // ---------------------------------------------------------------------
+  // Always-on plugin: hand the browser the Quack URI and token through a
+  // virtual module. Dev values come from the running plugin above; production
+  // builds read `QUACK_URI` / `QUACK_TOKEN` from the environment.
+  // ---------------------------------------------------------------------
+  const configPlugin: Plugin = {
+    name: 'quack-config',
+
+    configResolved(config: ResolvedConfig) {
+      if (config.command !== 'build') return;
+      live.uri = process.env.QUACK_URI ?? live.uri;
+      live.token = process.env.QUACK_TOKEN ?? '';
+      if (!live.token) {
+        config.logger.warn(
+          '[quack] QUACK_TOKEN is not set; the production bundle will not be able to authenticate with the Quack server. Set QUACK_URI and QUACK_TOKEN at build time.',
+        );
+      }
+    },
+
+    resolveId(id: string) {
+      if (id === VIRTUAL_MODULE_ID) return RESOLVED_VIRTUAL_ID;
+      return undefined;
+    },
+
+    load(id: string) {
+      if (id !== RESOLVED_VIRTUAL_ID) return undefined;
+      return [
+        `/** Generated by rebuild-db. In dev this comes from the running Quack server;`,
+        ` * in production builds from QUACK_URI / QUACK_TOKEN. */`,
+        `export const quackUri = ${JSON.stringify(live.uri)};`,
+        `export const quackToken = ${JSON.stringify(live.token)};`,
+        '',
+      ].join('\n');
+    },
+  };
+
+  let root = process.cwd();
+  return [servePlugin, configPlugin];
 }
+
+// ---------------------------------------------------------------------------
+// Quack server: a long-lived DuckDB process serving the database.
+// ---------------------------------------------------------------------------
+
+interface QuackServerOptions {
+  command: string;
+  uri: string;
+  token: string;
+  logger: { info: (msg: string) => void; warn: (msg: string) => void; error: (msg: string) => void };
+}
+
+/**
+ * Keeps a `duckdb` process alive with its stdin held open (the pattern from
+ * duckdb's own quack infra: `sleep infinity | duckdb -init init.sql`). SQL is
+ * fed to the session as it runs: `quack_serve` at startup, then refreshed
+ * `CREATE OR REPLACE VIEW` statements whenever a rebuild produces a new
+ * database. Everything the session can see is reachable over Quack.
+ */
+class QuackServer {
+  private child: ChildProcess | null = null;
+  private starting = false;
+  private stopping = false;
+  private file: string | null = null;
+  private restartTimer: NodeJS.Timeout | undefined;
+
+  constructor(private readonly options: QuackServerOptions) {}
+
+  /** Point the server at `views` (for one database file), starting it if needed. */
+  async serve(views: string[]): Promise<void> {
+    this.starting = true;
+    try {
+      if (!this.child || this.child.killed) {
+        this.spawn(views);
+      } else {
+        this.send(views);
+      }
+      // `quack_serve` binds asynchronously; confirm the endpoint answers so a
+      // failed start (extension missing, port taken) is loud in the terminal.
+      await this.probe();
+    } finally {
+      this.starting = false;
+    }
+  }
+
+  stop(): void {
+    this.stopping = true;
+    if (this.restartTimer) clearTimeout(this.restartTimer);
+    this.child?.kill();
+    this.child = null;
+  }
+
+  private spawn(views: string[]): void {
+    const { command, uri, token, logger } = this.options;
+    const child = spawn(command, ['-batch', ':memory:'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    this.child = child;
+    this.stopping = false;
+
+    const forward = (stream: NodeJS.ReadableStream, level: 'info' | 'error') => {
+      let buffer = '';
+      stream.setEncoding('utf8');
+      stream.on('data', (chunk: string) => {
+        buffer += chunk;
+        let newline: number;
+        while ((newline = buffer.indexOf('\n')) >= 0) {
+          const line = buffer.slice(0, newline).trimEnd();
+          buffer = buffer.slice(newline + 1);
+          if (line) logger[level](`[quack] ${line}`);
+        }
+      });
+    };
+    forward(child.stdout!, 'info');
+    forward(child.stderr!, 'error');
+
+    child.on('exit', (code) => {
+      if (this.child === child) this.child = null;
+      if (this.stopping || this.starting) return;
+      logger.warn(`[quack] the DuckDB server exited (code ${code}); restarting`);
+      this.scheduleRestart();
+    });
+    child.on('error', (error) => {
+      logger.error(`[quack] could not run ${command}: ${describe(error)}`);
+      this.child = null;
+    });
+
+    // Install and load the extension, start serving, then create the views.
+    this.send([`INSTALL quack;`, `LOAD quack;`, `CALL quack_serve(${quote(uri)}, token => ${quote(token)});`, ...views]);
+    logger.info(`[quack] serving ${uri}`);
+  }
+
+  /** Re-run the init SQL for the last database after an unexpected exit. */
+  private scheduleRestart(): void {
+    if (this.restartTimer || !this.file) return;
+    this.restartTimer = setTimeout(() => {
+      this.restartTimer = undefined;
+      const views = this.file!.endsWith('.parquet') ? parquetViews(this.file!) : duckDbViews(this.file!);
+      void this.serve(views).catch(() => undefined);
+    }, 500);
+  }
+
+  /** Write SQL statements to the server session's stdin. */
+  private send(statements: string[]): void {
+    this.file = null;
+    for (const statement of statements) {
+      // Track the database the views point at so a crashed server can restart
+      // with the same data.
+      const file = parquetFileOf(statement) ?? duckDbFileOf(statement);
+      if (file) this.file = file;
+      // The CLI executes a statement once it sees the terminating semicolon;
+      // without one, everything after it would be parsed as part of the same
+      // statement.
+      const terminated = statement.trimEnd().endsWith(';') ? statement : `${statement};`;
+      this.child?.stdin?.write(`${terminated}\n`);
+    }
+  }
+
+  /** Poll the HTTP endpoint until it answers (or give up after a few seconds). */
+  private async probe(): Promise<void> {
+    const { uri, logger } = this.options;
+    const url = quackHttpUrl(uri);
+    if (!url) return;
+    const deadline = Date.now() + 5000;
+    for (;;) {
+      try {
+        const response = await fetch(url, { method: 'OPTIONS' });
+        if (response.ok) return;
+      } catch {
+        // not listening (yet)
+      }
+      if (Date.now() > deadline) {
+        logger.warn(`[quack] ${url} did not answer; check the DuckDB output above`);
+        return;
+      }
+      await delay(250);
+    }
+  }
+}
+
+/** `quack:localhost:9494` -> `http://localhost:9494/quack` (Quack's endpoint). */
+function quackHttpUrl(uri: string): string | null {
+  const match = /^quack:([^:]+)(?::(\d+))?$/.exec(uri);
+  if (!match) return null;
+  const port = match[2] ?? '9494';
+  return `http://${match[1]}:${port}/quack`;
+}
+
+/** The parquet file a view statement reads, if any. */
+function parquetFileOf(statement: string): string | null {
+  return /read_parquet\('([^']+)'\)/.exec(statement)?.[1] ?? null;
+}
+
+/** The .duckdb file an ATTACH statement opens, if any. */
+function duckDbFileOf(statement: string): string | null {
+  return /^ATTACH '([^']+)'/.exec(statement)?.[1] ?? null;
+}
+
+const quote = (value: string) => `'${value.replace(/'/g, "''")}'`;
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 function displayPath(root: string, file: string): string {
   const relative = path.relative(root, file);
@@ -172,6 +473,16 @@ function displayPath(root: string, file: string): string {
 function isInside(parent: string, child: string): boolean {
   const relative = path.relative(parent, child);
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+/** The newest `<name>-*.parquet` build in `dir`, if there is one. */
+async function newestBuild(dir: string, name: string): Promise<string | null> {
+  const entries = await readdir(dir).catch(() => [] as string[]);
+  const files = entries.filter((file) => file.startsWith(`${name}-`) && file.endsWith('.parquet'));
+  if (files.length === 0) return null;
+  const dated = await Promise.all(files.map(async (file) => ({ file, mtimeMs: (await stat(path.join(dir, file))).mtimeMs })));
+  dated.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return path.join(dir, dated[0].file);
 }
 
 /** A filesystem-safe timestamp, e.g. `2026-10-20T01-40-00-000Z`. */

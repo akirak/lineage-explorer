@@ -11,8 +11,6 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as NodesRouteImport } from './routes/nodes'
-import { Route as ApiDatabasesRouteImport } from './routes/api/databases'
-import { Route as ApiGraphRouteImport } from './routes/api/graph'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -24,49 +22,31 @@ const NodesRoute = NodesRouteImport.update({
   path: '/nodes',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiDatabasesRoute = ApiDatabasesRouteImport.update({
-  id: '/api/databases',
-  path: '/api/databases',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiGraphRoute = ApiGraphRouteImport.update({
-  id: '/api/graph',
-  path: '/api/graph',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/nodes': typeof NodesRoute
-  '/api/databases': typeof ApiDatabasesRoute
-  '/api/graph': typeof ApiGraphRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/nodes': typeof NodesRoute
-  '/api/databases': typeof ApiDatabasesRoute
-  '/api/graph': typeof ApiGraphRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/nodes': typeof NodesRoute
-  '/api/databases': typeof ApiDatabasesRoute
-  '/api/graph': typeof ApiGraphRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/nodes' | '/api/databases' | '/api/graph'
+  fullPaths: '/' | '/nodes'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/nodes' | '/api/databases' | '/api/graph'
-  id: '__root__' | '/' | '/nodes' | '/api/databases' | '/api/graph'
+  to: '/' | '/nodes'
+  id: '__root__' | '/' | '/nodes'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   NodesRoute: typeof NodesRoute
-  ApiDatabasesRoute: typeof ApiDatabasesRoute
-  ApiGraphRoute: typeof ApiGraphRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -85,28 +65,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NodesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/databases': {
-      id: '/api/databases'
-      path: '/api/databases'
-      fullPath: '/api/databases'
-      preLoaderRoute: typeof ApiDatabasesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/graph': {
-      id: '/api/graph'
-      path: '/api/graph'
-      fullPath: '/api/graph'
-      preLoaderRoute: typeof ApiGraphRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   NodesRoute: NodesRoute,
-  ApiDatabasesRoute: ApiDatabasesRoute,
-  ApiGraphRoute: ApiGraphRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

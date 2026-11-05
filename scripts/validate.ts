@@ -11,7 +11,7 @@
 // Exits with a non-zero status when any issue is found.
 // ---------------------------------------------------------------------------
 import { DuckDBInstance } from '@duckdb/node-api';
-import { schema as s } from '../server/schema.ts';
+import { schema as s } from '../shared/schema.ts';
 
 const DB_PATH = process.env.DUCKDB_PATH || process.argv[2] || './openlineage.duckdb';
 

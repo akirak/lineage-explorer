@@ -1,13 +1,16 @@
 # Lineage Explorer
 
 A React Flow explorer for OpenLineage metadata stored in DuckDB. A
-[TanStack Start] app (TypeScript, built with Vite) reads the data with server
-routes and the React app draws jobs and datasets as a left-to-right lineage
-graph. [TanStack Router] keeps the view in the URL so it can be shared or
-reloaded.
+[TanStack Start] app (TypeScript, built with Vite) loads [DuckDB-Wasm] in the
+browser and queries the database over the [Quack remote protocol] while a
+DuckDB process serves it, and the React app draws jobs and datasets as a
+left-to-right lineage graph. [TanStack Router] keeps the view in the URL so it
+can be shared or reloaded.
 
 [TanStack Start]: https://tanstack.com/start
 [TanStack Router]: https://tanstack.com/router
+[DuckDB-Wasm]: https://duckdb.org/docs/2.0/clients/wasm/overview
+[Quack remote protocol]: https://duckdb.org/docs/2.0/quack/overview
 
 ## Run it
 
@@ -16,19 +19,37 @@ pnpm install
 pnpm dev   # http://localhost:5173
 ```
 
-`pnpm dev` starts TanStack Start, which serves both the UI and the `/api/*`
-server routes. The `rebuild-db` Vite plugin builds the database when the server
-starts and whenever the SQL under `data/` changes.
+`pnpm dev` starts TanStack Start, which serves the UI. The `rebuild-db` Vite
+plugin builds the database when the dev server starts and whenever the SQL
+under `data/` changes, and runs the **Quack server** — a DuckDB process on
+`localhost:9494` that serves the rebuilt database over DuckDB's [Quack remote
+protocol]. The browser connects to it with DuckDB-Wasm and runs every query
+remotely on the server; nothing about the database is read client-side.
+
+The plugin generates a fresh Quack token on every dev-server start and hands
+the URI and token to the browser through a virtual module
+(`virtual:quack-config`), so nothing has to be configured by hand.
 
 Production:
 
 ```bash
-pnpm build
+QUACK_URI='quack:my-server:9494' QUACK_TOKEN='<token>' pnpm build
 pnpm start   # http://localhost:3001
 ```
 
-Type-check the server and the app with `pnpm typecheck`. API response types
-shared by both live in `shared/types.ts`.
+There are no `/api/*` routes anymore: the production bundle needs a Quack
+server to talk to, configured with `QUACK_URI` and `QUACK_TOKEN` at build
+time. Run one anywhere DuckDB is available, e.g.
+
+```bash
+duckdb :memory: -c "LOAD quack; CALL quack_serve('quack:my-server:9494', token => '<token>');"
+```
+
+(see the Quack docs for [securing a server with a reverse proxy]). A plain
+`.duckdb` file can be served by attaching it first; see `shared/views.ts`.
+
+Type-check the app with `pnpm typecheck`. Types shared by the plugin and the
+browser client live in `shared/`.
 
 ## How the data flows
 
@@ -42,38 +63,50 @@ table_name VARCHAR, data JSON
 ```
 
 Each successful rebuild writes a **new** file, `builds/lineage-<timestamp>.parquet`,
-instead of overwriting the previous one, so older builds stay available. The
-plugin reloads the browser after a build.
+instead of overwriting the previous one, so older builds stay available. Old
+builds beyond `keep` (default 10) are pruned. The plugin reloads the browser
+after a build.
 
-The server (`server/lineage.ts`) opens the selected parquet file in an
-in-memory DuckDB and recreates a view for each table described by
-`server/schema.ts`, extracting the columns out of the `data` JSON. The rest of
-the server then queries those views exactly as if they were regular tables.
+The Quack server is a long-lived `duckdb` process the plugin keeps running
+with its stdin held open. On start it installs and loads the `quack` extension
+and calls `quack_serve` on `localhost:9494`; after every rebuild the plugin
+re-issues `CREATE OR REPLACE VIEW` statements for the new parquet file, so the
+next query from the browser sees the updated data. The views
+(`shared/views.ts`) recreate one table per stacked table by extracting the
+columns out of the `data` JSON, so the rest of the explorer queries them
+exactly as if they were regular tables.
 
-Set `rebuildDatabase({ dir, outDir, name, keep })` in `vite.config.ts` to change
-what is watched and where builds are written (`keep` defaults to 10 so old
-builds are pruned). Point production at a specific database with
-`LINEAGE_DB_DIR`. A plain `.duckdb` file is still supported through
-`DUCKDB_PATH` (for example the output of
-`duckdb sample.duckdb < data/build-db.sql`); `pnpm sample` does that for you.
+In the browser, `src/quack.ts` loads DuckDB-Wasm, installs the `quack`
+extension (from the `core_nightly` repository, with a fallback to the default
+one), creates a `quack` secret from the virtual module, and runs the graph
+queries (`shared/queries.ts`) through the stateless `quack_query` table
+function. Each query executes on the server, so the parquet files and views
+never have to exist client-side. The graph itself (nodes, edges, column
+lineage) is assembled in the browser from those query results.
 
-[DuckDB CLI]: https://duckdb.org/docs/installation/
+Set `rebuildDatabase({ dir, outDir, name, keep, quack })` in `vite.config.ts`
+to change what is watched, where builds are written, and how the Quack server
+runs (`quack: { port, token, hostname, command }`, or `quack: false` to run
+your own). A plain `.duckdb` file is still supported through `DUCKDB_PATH`
+(for example the output of `duckdb sample.duckdb < data/build-db.sql`); the
+plugin serves it instead of the parquet builds. `pnpm sample` creates it for
+you.
 
 ## Databases
 
-The database shown in the browser is kept in the `lineage_db` cookie:
+The Quack server always serves the **newest** parquet build. **Refresh the
+database** in the top bar re-runs the queries, which picks up whatever the
+server currently serves; editing the SQL under `data/` rebuilds and re-points
+the server automatically, then reloads the browser.
 
-- `GET /api/databases` lists the available builds and the current one.
-- `POST /api/databases` with `{ "id": "<file name>" }` selects a build.
-- `DELETE /api/databases` forgets the selection so the newest build is used.
-- `GET /api/graph` returns the graph for the selected build.
-
-With no cookie the newest build is used. **Refresh the database** in the top bar
-clears the selection and reloads the newest revision.
+> The previous version listed the available builds and switched between them
+> through `/api/*` routes and a cookie. Those routes are gone with the server
+> API; if you need to look at an older build, point `DUCKDB_PATH` at a file or
+> re-run the SQL that produced it.
 
 ## Point it at your tables
 
-Edit `server/schema.ts`. It maps each entity table to the columns this app needs.
+Edit `shared/schema.ts`. It maps each entity table to the columns this app needs.
 The explorer models lineage only; it does not read runs or run events.
 
 | Table | Columns used |
@@ -129,3 +162,6 @@ are built without it.
 No database yet? `pnpm sample` creates `openlineage.duckdb` from
 `data/build-db.sql` (the [DuckDB CLI] is in the Nix dev shell), or just run
 `pnpm dev` to build a parquet database from the same SQL.
+
+[securing a server with a reverse proxy]: https://duckdb.org/docs/2.0/quack/setup/reverse_proxy.html
+[DuckDB CLI]: https://duckdb.org/docs/installation/

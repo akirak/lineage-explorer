@@ -3,9 +3,10 @@
 A React Flow explorer for OpenLineage metadata stored in DuckDB. A
 [TanStack Start] app (TypeScript, built with Vite) loads [DuckDB-Wasm] in the
 browser and queries the database over the [Quack remote protocol] while a
-DuckDB process serves it, and the React app draws jobs and datasets as a
-left-to-right lineage graph. [TanStack Router] keeps the view in the URL so it
-can be shared or reloaded.
+DuckDB process serves it during development. The Cloudflare deployment instead
+queries a published database snapshot entirely in the browser. The React app
+draws jobs and datasets as a left-to-right lineage graph. [TanStack Router] keeps
+the view in the URL so it can be shared or reloaded.
 
 [TanStack Start]: https://tanstack.com/start
 [TanStack Router]: https://tanstack.com/router
@@ -36,14 +37,91 @@ pass it as a plugin option:
 rebuildDatabase({ quack: { token: 'my-fixed-token' } })
 ```
 
-Production:
+## Deploy the entire app to Cloudflare Free
+
+[`alchemy.run.ts`](./alchemy.run.ts) uses [Alchemy](https://alchemy.run) to
+publish an **assets-only Cloudflare Worker**: the SPA shell, JS/CSS, DuckDB-Wasm,
+its JSON/Parquet extensions, and a database snapshot. There is no server code to
+invoke, no external Quack server, and no R2, D1, KV, Durable Objects, or Containers.
+Cloudflare serves static asset requests for free, including SPA deep links such
+as `/nodes`. You do not need a custom domain or a Workers Paid subscription.
+
+A long-running DuckDB/Quack process cannot run on Workers Free. To fit the entire
+app on that tier, `pnpm build:cloudflare` rebuilds the SQL under `data/` into a
+parquet snapshot and the browser queries it locally. Local development keeps
+using Quack unchanged.
+
+### First deployment
+
+Requirements: Node.js **24.11.1+**, pnpm, the [DuckDB CLI] on `PATH` (included in
+`nix develop`), and a Cloudflare account. The build downloads the signed DuckDB
+browser extensions from `extensions.duckdb.org`; visitors load them from your own
+site. Alchemy and its Cloudflare provider are pinned to the same v2 beta version.
+
+```bash
+pnpm install
+pnpm exec alchemy profile edit --add Cloudflare
+pnpm run deploy
+```
+
+Authenticate through Alchemy's OAuth/API-token prompt. The deploy command targets
+stage `prod` and prints your `https://<site>.<account>.workers.dev` URL. For
+noninteractive credentials, export `CLOUDFLARE_ACCOUNT_ID` and
+`CLOUDFLARE_API_TOKEN` instead; the token needs **Account → Workers Scripts → Edit**
+and **Account Settings → Read** for the target account. Alchemy also reads `.env`
+(which is gitignored). Do not put Cloudflare credentials in `VITE_*` variables or
+`QUACK_TOKEN` — they must never be shipped to the browser.
+
+```bash
+pnpm exec alchemy plan --stage prod   # preview infrastructure changes
+pnpm build:cloudflare                 # build/check without deploying
+pnpm start                            # preview locally at http://localhost:3001
+pnpm test:deployment                  # snapshot and asset-limit tests
+pnpm run destroy                     # remove the prod deployment
+```
+
+**State:** Alchemy tracks resources locally in `.alchemy/state/`. Keep this
+private directory backed up and use the same state for subsequent deploys and
+destroys. Do not delete it or run deployments concurrently from different
+machines; CI needs persisted/shared state before it can safely manage this stack.
+No remote state service is provisioned by this configuration.
+
+### Data, refreshes, and limits
+
+- **All deployed lineage data is public and downloadable.** This configuration
+  adds no authentication. Deploy only data you are happy to publish, or add access
+  control before deploying sensitive metadata.
+- Each deploy builds from **all SQL under `data/`**, not old files in `builds/`
+  or the development `DUCKDB_PATH`. Edit those SQL sources and run `pnpm run deploy`
+  to publish new data. The in-app refresh re-queries the current snapshot; reload
+  the page after a new deployment to load its new content-hashed database URL.
+- Only `dist/client/` is uploaded. TanStack Start prerenders `index.html` as the
+  SPA shell; the generated `dist/server/` is build-time scaffolding, not deployed
+  SSR. There are no server/API endpoints in this mode.
+- Workers Free permits **20,000 static assets** and **25 MiB per asset**. The
+  build fails before upload if these limits are exceeded, including the database.
+  DuckDB's raw WASM modules are larger than 25 MiB, so
+  `plugins/compressed-wasm.ts` publishes gzip files (~8–9 MiB each) that the
+  browser inflates before instantiation. No paid object storage is needed.
+- The runtime and required extensions are served from the same origin. Google
+  Fonts remains an optional external stylesheet; the app works without it.
+  Modern browsers with WebAssembly and `DecompressionStream` are required.
+- When upgrading `@duckdb/duckdb-wasm`, update the matching **engine version**
+  in `scripts/build-snapshot.ts` too (currently `v1.5.4`; this differs from the
+  npm package version), and verify both WASM architectures' extension downloads.
+
+### Alternative: production with an external Quack server
+
+If you prefer live remote queries instead of a public snapshot, the original
+production build is still available (this is **not** a self-contained Cloudflare
+Free deployment):
 
 ```bash
 QUACK_URI='quack:my-server:9494' QUACK_TOKEN='<token>' pnpm build
 pnpm start   # http://localhost:3001
 ```
 
-There are no `/api/*` routes anymore: the production bundle needs a Quack
+There are no `/api/*` routes anymore: this production bundle needs a Quack
 server to talk to, configured with `QUACK_URI` and `QUACK_TOKEN` at build
 time. Run one anywhere DuckDB is available, e.g.
 
@@ -86,9 +164,11 @@ In the browser, `src/quack.ts` loads DuckDB-Wasm, installs the `quack`
 extension (from the `core_nightly` repository, with a fallback to the default
 one), creates a `quack` secret from the virtual module, and runs the graph
 queries (`shared/queries.ts`) through the stateless `quack_query` table
-function. Each query executes on the server, so the parquet files and views
-never have to exist client-side. The graph itself (nodes, edges, column
-lineage) is assembled in the browser from those query results.
+function. Each query in Quack mode executes on the server, so the parquet files
+and views never have to exist client-side. In Cloudflare snapshot mode, the client instead
+registers the downloaded parquet file in DuckDB-Wasm, creates the same views,
+and runs the same SQL locally without loading Quack. The graph itself (nodes,
+edges, column lineage) is assembled in the browser from those query results.
 
 Set `rebuildDatabase({ dir, outDir, name, keep, quack })` in `vite.config.ts`
 to change what is watched, where builds are written, and how the Quack server
@@ -100,8 +180,9 @@ you.
 
 ## Databases
 
-The Quack server always serves the **newest** parquet build. **Refresh the
-database** in the top bar re-runs the queries, which picks up whatever the
+In development / external-Quack mode, the Quack server always serves the
+**newest** parquet build. **Refresh the database** in the top bar re-runs the
+queries, which picks up whatever the
 server currently serves; editing the SQL under `data/` rebuilds and re-points
 the server automatically, then reloads the browser.
 

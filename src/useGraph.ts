@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Graph } from '../shared/types.ts';
 
-/** One cache entry for the graph assembled from the Quack server's responses. */
+/** One cache entry for the graph assembled from the configured database. */
 export const graphQueryKey = ['quack', 'graph'] as const;
 
 async function fetchGraph(): Promise<Graph> {
@@ -15,7 +15,7 @@ async function fetchGraph(): Promise<Graph> {
 /**
  * Loads the full lineage graph through TanStack Query, so the Graph and Nodes
  * views share one cached copy. `reload` invalidates that copy and refetches it
- * from the Quack server.
+ * from Quack or the locally loaded Cloudflare snapshot.
  */
 export function useGraph() {
   const queryClient = useQueryClient();
@@ -25,8 +25,8 @@ export function useGraph() {
     // Quack and DuckDB-Wasm are browser-only; the server render just shows the
     // loading state and the query starts during hydration.
     enabled: typeof window !== 'undefined',
-    // The database only changes when the dev plugin rebuilds it, so keep the
-    // cached graph until an explicit reload.
+    // Keep the graph until an explicit refresh. A new Cloudflare snapshot
+    // requires a page reload after deployment; dev rebuilds reload automatically.
     staleTime: Infinity,
     gcTime: Infinity,
     retry: false,

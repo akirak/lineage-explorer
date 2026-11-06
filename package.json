@@ -8,7 +8,11 @@
     "validate": "tsx scripts/validate.ts",
     "dev": "vite dev",
     "build": "vite build",
+    "build:cloudflare": "tsx scripts/build-snapshot.ts && vite build --mode cloudflare && tsx scripts/check-cloudflare-assets.ts",
+    "deploy": "alchemy deploy --stage prod",
+    "destroy": "alchemy destroy --stage prod",
     "start": "vite preview --port 3001",
+    "test:deployment": "tsx --test scripts/cloudflare.test.ts",
     "typecheck": "tsc"
   },
   "dependencies": {
@@ -24,11 +28,16 @@
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
+    "@alchemy.run/cloudflare": "2.0.0-beta.85",
     "@duckdb/node-api": "1.5.6-r.2",
+    "@effect/platform-bun": "4.1.2",
+    "@effect/platform-node": "4.1.2",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "alchemy": "2.0.0-beta.85",
+    "effect": "4.1.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.5"

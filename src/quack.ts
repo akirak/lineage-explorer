@@ -1,5 +1,6 @@
 // ---------------------------------------------------------------------------
-// DuckDB-Wasm client speaking the Quack remote protocol.
+// DuckDB-Wasm client: Quack in dev / externally hosted production, or an
+// in-browser parquet snapshot in the self-contained Cloudflare deployment.
 //
 // The explorer no longer has server routes of its own. In dev, the
 // `rebuild-db` Vite plugin runs a DuckDB process with the `quack` extension
@@ -24,7 +25,8 @@ import duckdbWasmEh from '@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url';
 import duckdbWasmMvp from '@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm?url';
 import duckdbWorkerEh from '@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url';
 import duckdbWorkerMvp from '@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url';
-import { quackToken, quackUri } from 'virtual:quack-config';
+import { quackToken, quackUri, snapshotUrl } from 'virtual:quack-config';
+import { parquetViews } from '../shared/views.ts';
 import { schema as s } from '../shared/schema.ts';
 import { graphQueries, type AvailableColumns } from '../shared/queries.ts';
 import type { ColumnEdge, Crud, DatasetField, DatasetNode, Graph, LineageEdge, LineageNode } from '../shared/types.ts';
@@ -33,16 +35,15 @@ import type { ColumnEdge, Crud, DatasetField, DatasetNode, Graph, LineageEdge, L
 type Row = Record<string, string | null>;
 
 interface QuackClient {
-  /** Run one SQL statement remotely on the Quack server. */
+  /** Run SQL on the configured database (remote Quack or local snapshot). */
   query: (sql: string) => Promise<Row[]>;
 }
 
 let clientPromise: Promise<QuackClient> | undefined;
 
 /**
- * The DuckDB-Wasm instance, connected to the Quack server. Created once per
- * page load; every graph query re-runs remotely, so a dev rebuild followed by
- * a browser reload is enough to see fresh data.
+ * One DuckDB-Wasm instance per page load. Quack queries re-run remotely;
+ * snapshot queries run locally over the database published with the app.
  */
 export function getQuackClient(): Promise<QuackClient> {
   clientPromise ??= createClient().catch((error: unknown) => {
@@ -59,20 +60,70 @@ async function createClient(): Promise<QuackClient> {
   });
   const worker = new Worker(bundle.mainWorker!);
   const db = new duckdb.AsyncDuckDB(new duckdb.ConsoleLogger(), worker);
-  await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+  // Cloudflare builds publish gzip-compressed WASM to stay below the static
+  // asset size limit. Inflate to a blob URL before handing it to DuckDB.
+  let moduleUrl = bundle.mainModule;
+  try {
+    if (moduleUrl.endsWith('.gz')) {
+      const response = await fetch(moduleUrl);
+      if (!response.ok || !response.body) {
+        throw new Error(`could not load DuckDB-Wasm (HTTP ${response.status})`);
+      }
+      const body = await response.blob();
+      const signature = new Uint8Array(await body.slice(0, 2).arrayBuffer());
+      // Some hosts (including Vite preview) set Content-Encoding: gzip for
+      // .gz files, so fetch has already inflated them. Never inflate twice.
+      const wasm = signature[0] === 0x1f && signature[1] === 0x8b
+        ? await new Response(body.stream().pipeThrough(new DecompressionStream('gzip'))).blob()
+        : body;
+      moduleUrl = URL.createObjectURL(new Blob([wasm], { type: 'application/wasm' }));
+    }
+    await db.instantiate(moduleUrl, bundle.pthreadWorker);
+  } catch (error) {
+    await db.terminate().catch(() => undefined);
+    worker.terminate();
+    throw error;
+  } finally {
+    if (moduleUrl !== bundle.mainModule) URL.revokeObjectURL(moduleUrl);
+  }
   const conn = await db.connect();
 
-  await loadQuack(conn);
-  await conn.query(
-    `CREATE SECRET lineage_quack (TYPE quack, TOKEN ${sqlString(quackToken)}, SCOPE ${sqlString(quackUri)});`,
-  );
+  try {
+    if (snapshotUrl) {
+      const extensions = new URL('/duckdb-extensions', window.location.href).href;
+      await conn.query(`SET custom_extension_repository = ${sqlString(extensions)};`);
+      await conn.query('INSTALL parquet; LOAD parquet; INSTALL json; LOAD json;');
+      // Download once rather than relying on HTTP range support. Both the
+      // database and DuckDB runtime are same-origin Cloudflare static assets.
+      const response = await fetch(snapshotUrl);
+      if (!response.ok) throw new Error(`could not load the database snapshot (HTTP ${response.status})`);
+      await db.registerFileBuffer('lineage.parquet', new Uint8Array(await response.arrayBuffer()));
+      for (const view of parquetViews('lineage.parquet')) await conn.query(view);
+      return {
+        query: async (sql) => (await conn.query(sql)).toArray() as unknown as Row[],
+      };
+    }
 
-  return {
-    query: async (sql) => {
-      const remote = `SELECT * FROM quack_query(${sqlString(quackUri)}, ${sqlString(sql)});`;
-      return (await conn.query(remote)).toArray() as unknown as Row[];
-    },
-  };
+    if (!quackToken) {
+      throw new Error('no Quack token configured. Set QUACK_URI and QUACK_TOKEN, or use pnpm build:cloudflare.');
+    }
+    await loadQuack(conn);
+    await conn.query(
+      `CREATE SECRET lineage_quack (TYPE quack, TOKEN ${sqlString(quackToken)}, SCOPE ${sqlString(quackUri)});`,
+    );
+
+    return {
+      query: async (sql) => {
+        const remote = `SELECT * FROM quack_query(${sqlString(quackUri)}, ${sqlString(sql)});`;
+        return (await conn.query(remote)).toArray() as unknown as Row[];
+      },
+    };
+  } catch (error) {
+    await conn.close().catch(() => undefined);
+    await db.terminate().catch(() => undefined);
+    worker.terminate();
+    throw error;
+  }
 }
 
 /** Load the quack extension, trying the nightly repository first. */
@@ -166,7 +217,7 @@ interface ViewRow {
 const jobId = (ns: string, name: string) => `job:${ns}\u0000${name}`;
 const datasetId = (ns: string, name: string) => `dataset:${ns}\u0000${name}`;
 
-/** Columns present in each optional-column table, detected on the server. */
+/** Columns present in each optional-column table, detected on the database. */
 async function loadAvailableColumns(query: QuackClient['query']): Promise<AvailableColumns> {
   const columns = async (table: string) => {
     const rows = await query(
@@ -181,12 +232,9 @@ async function loadAvailableColumns(query: QuackClient['query']): Promise<Availa
   };
 }
 
-/** Build the full lineage graph from the database the Quack server holds. */
+/** Build the full lineage graph from the configured database. */
 export async function loadGraph(): Promise<Graph> {
   const { query } = await getQuackClient();
-  if (!quackToken) {
-    throw new Error('no Quack token configured. In production builds, set QUACK_URI and QUACK_TOKEN.');
-  }
   const queries = graphQueries(await loadAvailableColumns(query));
   const jobs = (await query(queries.jobs)) as unknown as NameRow[];
   const datasets = (await query(queries.datasets)) as unknown as NameRow[];

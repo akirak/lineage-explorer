@@ -4,3 +4,7 @@ node_modules
 builds
 .output
 dist
+.alchemy/
+.env
+.env.*
+!.env.example

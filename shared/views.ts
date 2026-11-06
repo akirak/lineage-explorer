@@ -7,9 +7,8 @@
 // table by extracting the columns out of the `data` JSON, so the rest of the
 // explorer can query them exactly as if they were regular tables.
 //
-// The views are created in the DuckDB session that runs the Quack server (see
-// plugins/rebuild-db.ts), and the browser queries them remotely through the
-// Quack remote protocol.
+// The views are created in the Quack server's DuckDB session in dev (see
+// plugins/rebuild-db.ts), or directly in DuckDB-Wasm for Cloudflare snapshots.
 // ---------------------------------------------------------------------------
 import { schema as s } from './schema.ts';
 

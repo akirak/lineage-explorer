@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type MouseEvent, type ReactNode } from 'react';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -19,11 +19,13 @@ import { Select } from '@base-ui-components/react/select';
 import { Checkbox } from '@base-ui-components/react/checkbox';
 import { Toolbar } from '@base-ui-components/react/toolbar';
 import { Tooltip } from '@base-ui-components/react/tooltip';
+import { Toast } from '@base-ui-components/react/toast';
 import {
   Check,
   ChevronDown,
   ChevronUp,
   Columns3,
+  Copy,
   ListFilter,
   LocateFixed,
   Maximize2,
@@ -86,6 +88,46 @@ const transformationLabel = (e: ColumnEdge) =>
   [e.transformationType, e.transformationSubtype].filter(Boolean).join(' · ') || 'Unknown transformation';
 
 const isIndirect = (e: ColumnEdge) => e.transformationType?.toUpperCase() === 'INDIRECT';
+
+type TableCell = string | number | null | undefined;
+type TableData = { headers: string[]; rows: TableCell[][] };
+
+const tableCellText = (cell: TableCell) => String(cell ?? '').replace(/[\t\r\n]+/g, ' ').trim();
+
+/** Tab-separated values paste as a table into spreadsheets and document editors. */
+const tableToTsv = ({ headers, rows }: TableData) =>
+  [headers, ...rows].map((row) => row.map(tableCellText).join('\t')).join('\n');
+
+const tableToHtml = ({ headers, rows }: TableData) => {
+  const escapeHtml = (cell: TableCell) =>
+    tableCellText(cell).replace(/[&<>"]/g, (char) =>
+      char === '&' ? '&amp;' : char === '<' ? '&lt;' : char === '>' ? '&gt;' : '&quot;',
+    );
+  const head = headers.map((header) => `<th>${escapeHtml(header)}</th>`).join('');
+  const body = rows
+    .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`)
+    .join('');
+  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+};
+
+async function copyTableToClipboard(table: TableData) {
+  const text = tableToTsv(table);
+  const html = tableToHtml(table);
+  if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/plain': new Blob([text], { type: 'text/plain' }),
+          'text/html': new Blob([html], { type: 'text/html' }),
+        }),
+      ]);
+      return;
+    } catch {
+      // Fall back to plain text when the browser rejects rich clipboard writes.
+    }
+  }
+  await navigator.clipboard.writeText(text);
+}
 
 type SearchMatch = { id: string; kind: 'job' | 'dataset' | 'column'; name: string; context: string };
 
@@ -943,7 +985,16 @@ function Details(props: DetailsProps) {
           <NodeList title="Read by" ids={graph.edges.filter((e) => e.source === selection.node.id && e.kind === 'io').map((e) => e.target)} nodeById={nodeById} onSelect={onSelect} />
           <NodeList title="Views" ids={graph.edges.filter((e) => e.source === selection.node.id && e.kind === 'view').map((e) => e.target)} nodeById={nodeById} onSelect={onSelect} />
           <section>
-            <h3>Columns</h3>
+            <div className="section-head">
+              <h3>Columns</h3>
+              <CopyButton
+                label="Columns"
+                table={{
+                  headers: ['Name', 'Type', 'Description'],
+                  rows: selection.node.fields.map((field) => [field.name, field.type ?? '', field.description ?? '']),
+                }}
+              />
+            </div>
             {selection.node.fields.length === 0 ? (
               <p className="muted">No column metadata.</p>
             ) : (
@@ -972,10 +1023,60 @@ function Details(props: DetailsProps) {
   );
 }
 
-function NodeList({ title, ids, nodeById, onSelect }: { title: string; ids: string[]; nodeById: Map<string, LineageNode>; onSelect: (id: string) => void }) {
+function CopyButton({ label, table }: { label: string; table: TableData }) {
+  const toast = Toast.useToastManager();
+  const empty = table.rows.length === 0;
+
+  const copy = async () => {
+    try {
+      await copyTableToClipboard(table);
+      toast.add({
+        type: 'success',
+        title: `${label} copied`,
+        description: `${table.rows.length} ${table.rows.length === 1 ? 'row' : 'rows'} copied as a table.`,
+      });
+    } catch {
+      toast.add({
+        type: 'error',
+        title: 'Copy failed',
+        description: 'The clipboard is not available in this browser.',
+      });
+    }
+  };
+
+  return (
+    <Button
+      className="icon-btn section-copy"
+      onClick={copy}
+      disabled={empty}
+      aria-label={`Copy ${label} as a table`}
+      title={empty ? `Nothing to copy in ${label}` : `Copy ${label} as a table`}
+    >
+      <Copy size={15} aria-hidden="true" />
+    </Button>
+  );
+}
+
+function Section({ title, copy, children }: { title: string; copy?: TableData; children: ReactNode }) {
   return (
     <section>
-      <h3>{title}</h3>
+      <div className="section-head">
+        <h3>{title}</h3>
+        {copy && <CopyButton label={title} table={copy} />}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function NodeList({ title, ids, nodeById, onSelect }: { title: string; ids: string[]; nodeById: Map<string, LineageNode>; onSelect: (id: string) => void }) {
+  const nodes = ids.map((id) => nodeById.get(id)).filter((node): node is LineageNode => node != null);
+  const table: TableData = {
+    headers: ['Type', 'Name', 'Title', 'Namespace'],
+    rows: nodes.map((node) => [node.type, node.name, node.title ?? '', node.namespace]),
+  };
+  return (
+    <Section title={title} copy={table}>
       {ids.length === 0 ? (
         <p className="muted">None recorded.</p>
       ) : (
@@ -987,46 +1088,56 @@ function NodeList({ title, ids, nodeById, onSelect }: { title: string; ids: stri
           ))}
         </ul>
       )}
-    </section>
+    </Section>
   );
 }
 
 function ColumnDetails({ dataset, field, graph, nodeById, onSelect }: { dataset: DatasetNode; field: DatasetField; graph: Graph; nodeById: Map<string, LineageNode>; onSelect: (id: string) => void }) {
   const inbound = graph.columnEdges.filter((e) => e.target === dataset.id && e.targetField === field.name);
   const outbound = graph.columnEdges.filter((e) => e.source === dataset.id && e.sourceField === field.name);
-  const list = (title: string, edges: ColumnEdge[], side: 'source' | 'target') => (
-    <section>
-      <h3>{title}</h3>
-      {edges.length === 0 ? (
-        <p className="muted">None recorded.</p>
-      ) : (
-        <ul className="items">
-          {edges.map((e) => {
-            const ds = nodeById.get(e[side]);
-            const f = side === 'source' ? e.sourceField : e.targetField;
-            const job = e.job ? nodeById.get(e.job) : undefined;
-            return (
-              <li key={e.id}>
-                <Button className="link" onClick={() => onSelect(colKey(e[side], f))}>
-                  <span className="mono">{f}</span>
-                  <span className="muted small mono">{ds?.name}</span>
-                </Button>
-                <div className="item-meta">
-                  <span className={`badge-t${isIndirect(e) ? ' indirect' : ''}`}>{transformationLabel(e)}</span>
-                  {job && (
-                    <span className="muted small" title={job.description ?? undefined}>
-                      via {job.name}
-                    </span>
-                  )}
-                </div>
-                {e.description && <div className="muted small edge-description">{e.description}</div>}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
-  );
+  const list = (title: string, edges: ColumnEdge[], side: 'source' | 'target') => {
+    const table: TableData = {
+      headers: ['Field', 'Dataset', 'Namespace', 'Transformation', 'Job', 'Description'],
+      rows: edges.map((e) => {
+        const ds = nodeById.get(e[side]);
+        const f = side === 'source' ? e.sourceField : e.targetField;
+        const job = e.job ? nodeById.get(e.job) : undefined;
+        return [f, ds?.name ?? '', ds?.namespace ?? '', transformationLabel(e), job?.name ?? '', e.description ?? ''];
+      }),
+    };
+    return (
+      <Section title={title} copy={table}>
+        {edges.length === 0 ? (
+          <p className="muted">None recorded.</p>
+        ) : (
+          <ul className="items">
+            {edges.map((e) => {
+              const ds = nodeById.get(e[side]);
+              const f = side === 'source' ? e.sourceField : e.targetField;
+              const job = e.job ? nodeById.get(e.job) : undefined;
+              return (
+                <li key={e.id}>
+                  <Button className="link" onClick={() => onSelect(colKey(e[side], f))}>
+                    <span className="mono">{f}</span>
+                    <span className="muted small mono">{ds?.name}</span>
+                  </Button>
+                  <div className="item-meta">
+                    <span className={`badge-t${isIndirect(e) ? ' indirect' : ''}`}>{transformationLabel(e)}</span>
+                    {job && (
+                      <span className="muted small" title={job.description ?? undefined}>
+                        via {job.name}
+                      </span>
+                    )}
+                  </div>
+                  {e.description && <div className="muted small edge-description">{e.description}</div>}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Section>
+    );
+  };
   return (
     <>
       {list('Derived from', inbound, 'source')}
@@ -1035,10 +1146,34 @@ function ColumnDetails({ dataset, field, graph, nodeById, onSelect }: { dataset:
   );
 }
 
+function ToastViewport() {
+  const { toasts } = Toast.useToastManager();
+  return (
+    <Toast.Viewport className="toast-viewport">
+      {toasts.map((toast) => (
+        <Toast.Root key={toast.id} toast={toast} className="toast">
+          <Toast.Content className="toast-content">
+            <Toast.Title className="toast-title" />
+            <Toast.Description className="toast-description" />
+            <Toast.Close className="toast-close" aria-label="Dismiss notification">
+              <X size={14} aria-hidden="true" />
+            </Toast.Close>
+          </Toast.Content>
+        </Toast.Root>
+      ))}
+    </Toast.Viewport>
+  );
+}
+
 export default function App() {
   return (
-    <ReactFlowProvider>
-      <Explorer />
-    </ReactFlowProvider>
+    <Toast.Provider>
+      <Toast.Portal>
+        <ToastViewport />
+      </Toast.Portal>
+      <ReactFlowProvider>
+        <Explorer />
+      </ReactFlowProvider>
+    </Toast.Provider>
   );
 }

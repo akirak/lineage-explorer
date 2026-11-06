@@ -14,7 +14,7 @@ import {
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { ChevronDown, ChevronUp, LocateFixed, Pin, PinOff } from 'lucide-react';
 import type { ColumnEdge, DatasetField, DatasetNode, Graph, LineageEdge, LineageNode } from '../shared/types.ts';
-import type { ExplorerSearch, Mode } from './search.ts';
+import type { ExplorerSearch, LineageDegree, Mode } from './search.ts';
 import { useGraph } from './useGraph.ts';
 import { adjacency, layoutNodes, tableHeight, traverse, NODE_W, NODE_H, TABLE_W } from './layout.ts';
 import { inHandle, nodeTypes, outHandle, type LineageFlowNode, type Role, type TableFlowNode } from './nodes.tsx';
@@ -57,7 +57,7 @@ function edgeStyle(active: boolean, hasSelection: boolean, dashed = false, view 
 
 function Explorer() {
   const { setCenter, fitView } = useReactFlow();
-  const { mode, namespaces, selected, pinned, isolate } = useSearch({ from: '/' });
+  const { mode, namespaces, degree, selected, pinned, isolate } = useSearch({ from: '/' });
   const navigate = useNavigate({ from: '/' });
   const pendingCenter = useRef<string | null>(null);
   const { graph, error, loading, reload } = useGraph();
@@ -180,12 +180,53 @@ function Explorer() {
     return ds.fields.map((f) => colKey(ds.id, f.name));
   }, [selection, mode]);
 
+  const degreeLimit = degree === 'all' ? null : Number(degree);
+
   const { upstream, downstream } = useMemo(() => {
     const adj = mode === 'table' ? tableAdj : columnAdj;
     return { upstream: traverse(seeds, adj.up), downstream: traverse(seeds, adj.down) };
   }, [mode, tableAdj, columnAdj, seeds]);
 
   const lineage = useMemo(() => new Set([...seeds, ...upstream, ...downstream]), [seeds, upstream, downstream]);
+
+  // The degree filter is measured from the pinned node, not the current selection.
+  const pinnedSeeds = useMemo<string[]>(() => {
+    if (!pinnedNode || !nodeById.has(pinnedNode.id)) return [];
+    if (mode === 'table') return [pinnedNode.id];
+    if (pinnedNode.type === 'dataset') {
+      return pinnedNode.fields.map((f) => colKey(pinnedNode.id, f.name));
+    }
+    // Jobs are not drawn in column mode; start from the columns the job
+    // touches, falling back to the fields of its directly connected datasets.
+    const touched = scoped.columnEdges.filter((e) => e.job === pinnedNode.id);
+    if (touched.length > 0) {
+      return [
+        ...new Set(
+          touched.flatMap((e) => [colKey(e.source, e.sourceField), colKey(e.target, e.targetField)]),
+        ),
+      ];
+    }
+    const connected = new Set([
+      ...(tableAdj.up.get(pinnedNode.id) || []),
+      ...(tableAdj.down.get(pinnedNode.id) || []),
+    ]);
+    return datasets
+      .filter((d) => connected.has(d.id))
+      .flatMap((d) => d.fields.map((f) => colKey(d.id, f.name)));
+  }, [pinnedNode, nodeById, mode, scoped.columnEdges, tableAdj, datasets]);
+
+  const pinnedLineage = useMemo<Set<string> | null>(() => {
+    if (degreeLimit === null || pinnedSeeds.length === 0) return null;
+    const adj = mode === 'table' ? tableAdj : columnAdj;
+    // Job seeds are already one hop away from the pinned job.
+    const depth =
+      mode === 'column' && pinnedNode?.type === 'job' ? Math.max(0, degreeLimit - 1) : degreeLimit;
+    return new Set([
+      ...pinnedSeeds,
+      ...traverse(pinnedSeeds, adj.up, depth),
+      ...traverse(pinnedSeeds, adj.down, depth),
+    ]);
+  }, [pinnedSeeds, pinnedNode, mode, tableAdj, columnAdj, degreeLimit]);
 
   const roleOf = useCallback(
     (id: string): Role => {
@@ -204,23 +245,33 @@ function Explorer() {
   // ---- Visible graph -------------------------------------------------------
 
   const isolating = isolate && hasSelection;
+  const filtering = isolating || pinnedLineage !== null;
+  const visibleLineage = isolating ? lineage : pinnedLineage;
+  const visibleDatasetId = isolating
+    ? selectedDatasetId
+    : pinnedNode?.type === 'dataset'
+      ? pinnedNode.id
+      : null;
 
   const tableVisible = useMemo(() => {
-    if (!isolating) return { nodes: scoped.nodes, edges: scoped.edges };
+    if (!filtering || !visibleLineage) return { nodes: scoped.nodes, edges: scoped.edges };
     return {
-      nodes: scoped.nodes.filter((n) => lineage.has(n.id)),
-      edges: scoped.edges.filter((e) => lineage.has(e.source) && lineage.has(e.target)),
+      nodes: scoped.nodes.filter((n) => visibleLineage.has(n.id)),
+      edges: scoped.edges.filter((e) => visibleLineage.has(e.source) && visibleLineage.has(e.target)),
     };
-  }, [scoped, isolating, lineage]);
+  }, [scoped, filtering, visibleLineage]);
 
   const columnVisible = useMemo(() => {
-    if (!isolating) return { datasets, links: colLinks };
+    if (!filtering || !visibleLineage) return { datasets, links: colLinks };
     // Keep only datasets on the lineage, and only their lineage columns.
     const kept = datasets
-      .map((d) => ({ ...d, fields: d.fields.filter((f) => lineage.has(colKey(d.id, f.name))) }))
-      .filter((d) => d.id === selectedDatasetId || d.fields.length > 0);
-    return { datasets: kept, links: colLinks.filter((l) => lineage.has(l.source) && lineage.has(l.target)) };
-  }, [datasets, colLinks, isolating, lineage, selectedDatasetId]);
+      .map((d) => ({ ...d, fields: d.fields.filter((f) => visibleLineage.has(colKey(d.id, f.name))) }))
+      .filter((d) => d.id === visibleDatasetId || d.fields.length > 0);
+    return {
+      datasets: kept,
+      links: colLinks.filter((l) => visibleLineage.has(l.source) && visibleLineage.has(l.target)),
+    };
+  }, [datasets, colLinks, filtering, visibleLineage, visibleDatasetId]);
 
   const positioned = useMemo<Node[]>(() => {
     if (mode === 'table') {
@@ -448,6 +499,8 @@ function Explorer() {
                 <PinnedPanel
                   node={pinnedNode}
                   selected={selectedId === pinnedNode.id}
+                  degree={degree}
+                  onDegreeChange={(next) => updateSearch({ degree: next })}
                   onReveal={() => focusNode(pinnedNode.id)}
                   onUnpin={() => updateSearch({ pinned: '' })}
                 />
@@ -537,17 +590,31 @@ function NodeLink({ node, onSelect }: { node: LineageNode | undefined; onSelect:
 function PinnedPanel({
   node,
   selected,
+  degree,
+  onDegreeChange,
   onReveal,
   onUnpin,
 }: {
   node: LineageNode;
   selected: boolean;
+  degree: LineageDegree;
+  onDegreeChange: (degree: LineageDegree) => void;
   onReveal: () => void;
   onUnpin: () => void;
 }) {
   const [collapsed, setCollapsed] = useState(true);
+  const [lastDegree, setLastDegree] = useState<LineageDegree>(degree === 'all' ? '1' : degree);
   const title = node.title ?? node.name;
   const revealLabel = selected ? 'Center in graph' : 'Bring into view';
+
+  useEffect(() => {
+    if (degree !== 'all') setLastDegree(degree);
+  }, [degree]);
+
+  const changeDegree = (next: LineageDegree) => {
+    if (next !== 'all') setLastDegree(next);
+    onDegreeChange(next);
+  };
 
   return (
     <div
@@ -612,6 +679,32 @@ function PinnedPanel({
           )}
           <div className="pinned-sub muted small">{node.namespace}</div>
           {node.description && <p className="pinned-desc">{node.description}</p>}
+          <div className="pinned-degree">
+            <span>Degree</span>
+            <div className="pinned-degree-controls">
+              <select
+                aria-label="Degree"
+                value={degree === 'all' ? lastDegree : degree}
+                disabled={degree === 'all'}
+                onChange={(e) => changeDegree(e.target.value as LineageDegree)}
+                title="Number of hops shown around the pinned node"
+              >
+                {(['1', '2', '3', '4'] as const).map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+              <label className="pinned-degree-all" title="Do not limit the displayed nodes by degree">
+                <input
+                  type="checkbox"
+                  checked={degree === 'all'}
+                  onChange={(e) => changeDegree(e.target.checked ? 'all' : lastDegree)}
+                />
+                All
+              </label>
+            </div>
+          </div>
           <button className="btn small pinned-reveal" onClick={onReveal}>
             {revealLabel}
           </button>

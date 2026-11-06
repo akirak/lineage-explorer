@@ -31,15 +31,23 @@ export function layoutNodes<N extends { id: string }>(
   });
 }
 
-export function traverse(startIds: Iterable<string>, adjacency: Map<string, string[]>): Set<string> {
+export function traverse(
+  startIds: Iterable<string>,
+  adjacency: Map<string, string[]>,
+  maxDepth = Infinity,
+): Set<string> {
   const seen = new Set<string>();
-  const stack = [...startIds];
-  while (stack.length) {
-    const id = stack.pop()!;
+  if (maxDepth <= 0) return seen;
+  // Breadth-first so each node is discovered at its shortest distance from the seeds.
+  const queue = [...startIds].map((id) => ({ id, depth: 0 }));
+  let head = 0;
+  while (head < queue.length) {
+    const { id, depth } = queue[head++];
+    if (depth >= maxDepth) continue;
     for (const next of adjacency.get(id) || []) {
       if (!seen.has(next)) {
         seen.add(next);
-        stack.push(next);
+        queue.push({ id: next, depth: depth + 1 });
       }
     }
   }

@@ -151,16 +151,19 @@ are built without it.
   (datasets drawn as tables, edges between columns) in the top bar.
 - The current view is stored in the query string, so the URL can be shared or
   reloaded: `mode=column` (table is the default), `namespaces=["<namespace>"]`,
-  `selected=<node or column id>`, `pinned=<node id>`, and `isolate=true`. Default
-  values are omitted. `?mode=column` opens column mode directly.
+  `degree=<1-4>` (or `all`), `selected=<node or column id>`, `pinned=<node id>`, and
+  `isolate=true`. Default values are omitted. `?mode=column` opens column mode directly.
 - Click a node, or a column in column mode, to highlight its upstream (blue) and downstream (copper) lineage.
   In column mode, solid edges are direct transformations and dashed edges are indirect ones (joins, filters, grouping).
 - "Show only this lineage" hides everything else and re-lays out the graph. In column mode it also hides unrelated columns.
 - Pin a selected job or dataset with **Pin** in the details panel. A card for the pinned
   node stays in the graph viewport while you pan, zoom, or select something else; **Bring
   into view** selects and centers the node again, adding its namespace to the filter if it
-  was hidden. The card starts collapsed, showing just the node title and icon actions.
-  The pinned node is kept in the URL as `pinned=<node id>`.
+  was hidden. The card starts collapsed, showing just the node title and icon actions; its
+  expanded form has a **Degree** select that limits the visible graph to one to four
+  upstream/downstream hops from the pinned node in both table and column lineage; tick
+  **All** (the default) to remove the limit. The pinned node and degree are kept in the URL
+  as `pinned=<node id>` and `degree=<1-4|all>`.
 - Search by name or namespace (and column name in column mode); filter by one or more
   namespaces; reload to re-query the database.
 - **/nodes** lists every job and dataset in a table. Filter by text, namespace, type, or archetype; the filters live in the URL (`q`, `namespace`, `type`, `archetype`). Each row has a **Graph ->** link that opens that node in the lineage graph.

@@ -2,11 +2,16 @@ import type { SearchSchemaInput } from '@tanstack/react-router';
 
 export type Mode = 'table' | 'column';
 
+/** Maximum lineage depth shown around the pinned node; 'all' disables the limit. */
+export type LineageDegree = 'all' | '1' | '2' | '3' | '4';
+
 /** UI state kept in the URL query string so a view can be shared or reloaded. */
 export type ExplorerSearch = {
   mode: Mode;
   /** Namespaces to show; empty means all namespaces. */
   namespaces: string[];
+  /** Maximum number of upstream/downstream hops to show around the pinned node. */
+  degree: LineageDegree;
   /** Selected node id, or a column key (`<datasetId>\u0001<field>`); empty when nothing is selected. */
   selected: string;
   /** Node id pinned to the graph viewport; empty when nothing is pinned. */
@@ -23,6 +28,7 @@ export type ExplorerSearchInput = Partial<ExplorerSearch> & {
 export const defaultSearch: ExplorerSearch = {
   mode: 'table',
   namespaces: [],
+  degree: 'all',
   selected: '',
   pinned: '',
   isolate: false,
@@ -39,9 +45,11 @@ function parseNamespaces(search: ExplorerSearchInput): string[] {
 }
 
 export function parseSearch(search: ExplorerSearchInput): ExplorerSearch {
+  const degree = search.degree;
   return {
     mode: search.mode === 'column' ? 'column' : 'table',
     namespaces: parseNamespaces(search),
+    degree: degree === '1' || degree === '2' || degree === '3' || degree === '4' ? degree : 'all',
     selected: typeof search.selected === 'string' ? search.selected : '',
     pinned: typeof search.pinned === 'string' ? search.pinned : '',
     isolate: search.isolate === true || String(search.isolate) === 'true',

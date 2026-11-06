@@ -9,6 +9,8 @@ export type ExplorerSearch = {
   namespaces: string[];
   /** Selected node id, or a column key (`<datasetId>\u0001<field>`); empty when nothing is selected. */
   selected: string;
+  /** Node id pinned to the graph viewport; empty when nothing is pinned. */
+  pinned: string;
   isolate: boolean;
 };
 
@@ -22,6 +24,7 @@ export const defaultSearch: ExplorerSearch = {
   mode: 'table',
   namespaces: [],
   selected: '',
+  pinned: '',
   isolate: false,
 };
 
@@ -40,6 +43,7 @@ export function parseSearch(search: ExplorerSearchInput): ExplorerSearch {
     mode: search.mode === 'column' ? 'column' : 'table',
     namespaces: parseNamespaces(search),
     selected: typeof search.selected === 'string' ? search.selected : '',
+    pinned: typeof search.pinned === 'string' ? search.pinned : '',
     isolate: search.isolate === true || String(search.isolate) === 'true',
   };
 }

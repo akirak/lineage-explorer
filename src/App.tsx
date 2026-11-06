@@ -12,6 +12,7 @@ import {
   type Node,
 } from '@xyflow/react';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
+import { ChevronDown, ChevronUp, LocateFixed, Pin, PinOff } from 'lucide-react';
 import type { ColumnEdge, DatasetField, DatasetNode, Graph, LineageEdge, LineageNode } from '../shared/types.ts';
 import type { ExplorerSearch, Mode } from './search.ts';
 import { useGraph } from './useGraph.ts';
@@ -56,7 +57,7 @@ function edgeStyle(active: boolean, hasSelection: boolean, dashed = false, view 
 
 function Explorer() {
   const { setCenter, fitView } = useReactFlow();
-  const { mode, namespaces, selected, isolate } = useSearch({ from: '/' });
+  const { mode, namespaces, selected, pinned, isolate } = useSearch({ from: '/' });
   const navigate = useNavigate({ from: '/' });
   const pendingCenter = useRef<string | null>(null);
   const { graph, error, loading, reload } = useGraph();
@@ -117,6 +118,13 @@ function Explorer() {
 
   const nodeById = useMemo(() => new Map(scoped.nodes.map((n) => [n.id, n])), [scoped]);
   const datasets = useMemo(() => scoped.nodes.filter((n): n is DatasetNode => n.type === 'dataset'), [scoped]);
+
+  // The pinned card is independent of the namespace filter, so look the node up
+  // in the full graph and let the card reveal it if it is currently hidden.
+  const pinnedNode = useMemo(
+    () => (pinned && graph ? graph.nodes.find((n) => n.id === pinned) ?? null : null),
+    [pinned, graph],
+  );
 
   // ---- Table lineage -------------------------------------------------------
 
@@ -315,14 +323,26 @@ function Explorer() {
 
   const focusNode = (id: string) => {
     setQuery('');
-    const nextMode: Mode = mode === 'column' && id.startsWith('job:') ? 'table' : mode;
-    if (nextMode === mode && id === selectedId) {
+    const target = graph?.nodes.find((n) => n.id === id);
+    const nextMode: Mode = mode === 'column' && (target ? target.type === 'job' : id.startsWith('job:')) ? 'table' : mode;
+    // A pinned node may have been hidden by the namespace filter; reveal it too.
+    const revealedNamespaces =
+      target && namespaces.length > 0 && !namespaces.includes(target.namespace)
+        ? [...namespaces, target.namespace]
+        : null;
+    if (!revealedNamespaces && nextMode === mode && id === selectedId) {
       centerOn(id);
       return;
     }
     pendingCenter.current = id;
-    updateSearch({ mode: nextMode, selected: id });
+    updateSearch({
+      mode: nextMode,
+      selected: id,
+      ...(revealedNamespaces ? { namespaces: revealedNamespaces } : {}),
+    });
   };
+
+  const togglePin = (id: string) => updateSearch((prev) => ({ pinned: prev.pinned === id ? '' : id }));
 
   const onNodeClick = (event: MouseEvent, n: Node) => {
     const field = (event.target as HTMLElement).closest('[data-field]')?.getAttribute('data-field');
@@ -423,6 +443,16 @@ function Explorer() {
                 Fit view
               </button>
             </Panel>
+            {pinnedNode && (
+              <Panel position="top-left" className="pinned-panel">
+                <PinnedPanel
+                  node={pinnedNode}
+                  selected={selectedId === pinnedNode.id}
+                  onReveal={() => focusNode(pinnedNode.id)}
+                  onUnpin={() => updateSearch({ pinned: '' })}
+                />
+              </Panel>
+            )}
             <MiniMap
               pannable
               zoomable
@@ -459,6 +489,8 @@ function Explorer() {
               upstreamCount={upstream.size}
               downstreamCount={downstream.size}
               isolate={isolate}
+              pinnedId={pinned}
+              onTogglePin={togglePin}
               onToggleIsolate={() => updateSearch((prev) => ({ isolate: !prev.isolate }))}
               onSelect={focusNode}
               onClose={() => select(null)}
@@ -478,6 +510,8 @@ interface DetailsProps {
   upstreamCount: number;
   downstreamCount: number;
   isolate: boolean;
+  pinnedId: string;
+  onTogglePin: (id: string) => void;
   onToggleIsolate: () => void;
   onSelect: (id: string) => void;
   onClose: () => void;
@@ -500,19 +534,130 @@ function NodeLink({ node, onSelect }: { node: LineageNode | undefined; onSelect:
   );
 }
 
+function PinnedPanel({
+  node,
+  selected,
+  onReveal,
+  onUnpin,
+}: {
+  node: LineageNode;
+  selected: boolean;
+  onReveal: () => void;
+  onUnpin: () => void;
+}) {
+  const [collapsed, setCollapsed] = useState(true);
+  const title = node.title ?? node.name;
+  const revealLabel = selected ? 'Center in graph' : 'Bring into view';
+
+  return (
+    <div
+      className={`pinned-card${collapsed ? ' collapsed' : ''}`}
+      role="region"
+      aria-label={`Pinned ${node.type}: ${node.name}`}
+    >
+      {collapsed ? (
+        <div className="pinned-collapsed-row">
+          <div className="pinned-name mono" title={node.name}>
+            {title}
+          </div>
+          <div className="pinned-head-actions">
+            <button className="icon-btn" onClick={onReveal} aria-label={revealLabel} title={revealLabel}>
+              <LocateFixed size={15} aria-hidden="true" />
+            </button>
+            <button className="icon-btn" onClick={onUnpin} aria-label="Unpin node" title="Unpin node">
+              <PinOff size={15} aria-hidden="true" />
+            </button>
+            <button
+              className="icon-btn"
+              onClick={() => setCollapsed(false)}
+              aria-label="Expand pinned card"
+              aria-expanded="false"
+              title="Expand pinned card"
+            >
+              <ChevronDown size={16} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="pinned-head">
+            <span className="pinned-label">
+              <Pin size={13} aria-hidden="true" />
+              Pinned
+            </span>
+            <div className="pinned-head-actions">
+              <button className="icon-btn" onClick={onUnpin} aria-label="Unpin node" title="Unpin node">
+                <PinOff size={15} aria-hidden="true" />
+              </button>
+              <button
+                className="icon-btn"
+                onClick={() => setCollapsed(true)}
+                aria-label="Collapse pinned card"
+                aria-expanded="true"
+                title="Collapse pinned card"
+              >
+                <ChevronUp size={16} aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+          <div className="pinned-badges">
+            <span className={`kind kind-${node.type}`}>{node.type}</span>
+            {node.archetype && <span className="archetype-badge static">{node.archetype}</span>}
+          </div>
+          <div className="pinned-name mono" title={node.name}>
+            {title}
+          </div>
+          {node.title && node.title !== node.name && (
+            <div className="pinned-sub mono muted small">{node.name}</div>
+          )}
+          <div className="pinned-sub muted small">{node.namespace}</div>
+          {node.description && <p className="pinned-desc">{node.description}</p>}
+          <button className="btn small pinned-reveal" onClick={onReveal}>
+            {revealLabel}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Details(props: DetailsProps) {
-  const { selection, mode, graph, nodeById, upstreamCount, downstreamCount, isolate, onToggleIsolate, onSelect, onClose } =
-    props;
+  const {
+    selection,
+    mode,
+    graph,
+    nodeById,
+    upstreamCount,
+    downstreamCount,
+    isolate,
+    pinnedId,
+    onTogglePin,
+    onToggleIsolate,
+    onSelect,
+    onClose,
+  } = props;
   const isColumn = selection.kind === 'column';
   const kind = isColumn ? 'column' : selection.node.type;
   const heading = isColumn ? selection.field.name : selection.node.title ?? selection.node.name;
   const unit = mode === 'column' ? ' columns' : '';
+  const isPinned = !isColumn && pinnedId === selection.node.id;
 
   return (
     <div className="details">
       <div className="details-head">
         <span className={`kind kind-${kind}`}>{kind}</span>
         <div className="details-head-actions">
+          {!isColumn && (
+            <button
+              className={`btn small pin-toggle${isPinned ? ' on' : ''}`}
+              onClick={() => onTogglePin(selection.node.id)}
+              aria-pressed={isPinned}
+              aria-label={isPinned ? 'Unpin node' : 'Pin node to the viewport'}
+              title={isPinned ? 'Unpin this node from the viewport' : 'Pin this node to the viewport'}
+            >
+              <Pin size={15} aria-hidden="true" />
+            </button>
+          )}
           {!isColumn && selection.node.archetype && (
             <span className="archetype-badge static">{selection.node.archetype}</span>
           )}

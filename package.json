@@ -14,6 +14,7 @@
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",
     "@duckdb/duckdb-wasm": "1.33.1-dev57.0",
+    "@tanstack/react-query": "^5.106.1",
     "@tanstack/react-router": "1.170.45",
     "@tanstack/react-start": "1.169.3",
     "@xyflow/react": "^12.12.0",

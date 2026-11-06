@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { Menu } from '@base-ui-components/react/menu';
+import { Check, ChevronDown, Layers } from 'lucide-react';
 
 interface NamespacePickerProps {
   /** Every namespace in the graph. */
@@ -11,27 +12,10 @@ interface NamespacePickerProps {
 /**
  * Multi-select namespace filter. A single button opens a checklist so several
  * namespaces can be shown at once; an empty selection means "all namespaces".
+ * Built on the Base UI Menu, which handles focus, keyboard navigation, and
+ * dismissal.
  */
 export default function NamespacePicker({ namespaces, selected, onChange }: NamespacePickerProps) {
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [open]);
-
   const label =
     selected.length === 0
       ? 'All namespaces'
@@ -43,39 +27,53 @@ export default function NamespacePicker({ namespaces, selected, onChange }: Name
     onChange(selected.includes(namespace) ? selected.filter((n) => n !== namespace) : [...selected, namespace]);
 
   return (
-    <div className="field namespace-picker" ref={root}>
-      <span id="namespace-label">Namespaces</span>
-      <button
-        type="button"
-        className="picker-toggle"
-        aria-expanded={open}
-        aria-controls="namespace-menu"
-        aria-labelledby="namespace-label"
-        onClick={() => setOpen((value) => !value)}
-      >
-        <span className="picker-label" title={selected.join(', ')}>
-          {label}
-        </span>
-        <span className="picker-caret" aria-hidden="true">
-          ▾
-        </span>
-      </button>
-      {open && (
-        <div className="picker-menu" id="namespace-menu" role="group" aria-labelledby="namespace-label">
-          <label className="picker-option">
-            <input type="checkbox" checked={selected.length === 0} onChange={() => onChange([])} />
-            <span>All namespaces</span>
-          </label>
-          <div className="picker-divider" />
-          {namespaces.map((namespace) => (
-            <label className="picker-option" key={namespace}>
-              <input type="checkbox" checked={selected.includes(namespace)} onChange={() => toggle(namespace)} />
-              <span className="mono">{namespace}</span>
-            </label>
-          ))}
-          {namespaces.length === 0 && <p className="muted small picker-empty">No namespaces yet.</p>}
-        </div>
-      )}
+    <div className="namespace-picker">
+      <Menu.Root>
+        <Menu.Trigger
+          className="picker-toggle"
+          aria-label={`Namespaces: ${label}`}
+          title={selected.join(', ') || 'Filter by namespace'}
+        >
+          <Layers size={15} className="picker-icon" aria-hidden="true" />
+          <span className="picker-label">{label}</span>
+          <ChevronDown size={14} className="picker-caret" aria-hidden="true" />
+        </Menu.Trigger>
+        <Menu.Portal>
+          <Menu.Positioner className="popup-positioner" sideOffset={6} align="start">
+            <Menu.Popup className="picker-menu popup" aria-label="Namespaces">
+              <Menu.CheckboxItem
+                className="picker-option"
+                checked={selected.length === 0}
+                onCheckedChange={(checked) => {
+                  if (checked) onChange([]);
+                }}
+                closeOnClick={false}
+              >
+                <Menu.CheckboxItemIndicator className="picker-check" keepMounted>
+                  <Check size={13} strokeWidth={3} aria-hidden="true" />
+                </Menu.CheckboxItemIndicator>
+                <span>All namespaces</span>
+              </Menu.CheckboxItem>
+              <Menu.Separator className="picker-divider" />
+              {namespaces.map((namespace) => (
+                <Menu.CheckboxItem
+                  className="picker-option"
+                  key={namespace}
+                  checked={selected.includes(namespace)}
+                  onCheckedChange={() => toggle(namespace)}
+                  closeOnClick={false}
+                >
+                  <Menu.CheckboxItemIndicator className="picker-check" keepMounted>
+                    <Check size={13} strokeWidth={3} aria-hidden="true" />
+                  </Menu.CheckboxItemIndicator>
+                  <span className="mono">{namespace}</span>
+                </Menu.CheckboxItem>
+              ))}
+              {namespaces.length === 0 && <p className="muted small picker-empty">No namespaces yet.</p>}
+            </Menu.Popup>
+          </Menu.Positioner>
+        </Menu.Portal>
+      </Menu.Root>
     </div>
   );
 }

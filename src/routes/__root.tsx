@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { createRootRouteWithContext, HeadContent, Outlet, Scripts } from '@tanstack/react-router';
 import { QueryClientProvider } from '@tanstack/react-query';
 import type { RouterContext } from '../queryClient.ts';
+import SiteHeader from '../SiteHeader.tsx';
 import '@xyflow/react/dist/style.css';
 import '../styles.css';
 
@@ -29,7 +30,10 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <RootDocument>
-        <Outlet />
+        <div className="app">
+          <SiteHeader />
+          <Outlet />
+        </div>
       </RootDocument>
     </QueryClientProvider>
   );

@@ -154,7 +154,8 @@ arrows keep the default color. Input and view edges are never colored by CRUD.
 ## Using it
 
 - Switch between **Table lineage** (jobs and datasets) and **Column lineage**
-  (datasets drawn as tables, edges between columns) in the top bar.
+  (datasets drawn as tables, edges between columns) in the graph toolbar. The **Graph** and
+  **Nodes** links live in the global navigation above it.
 - The current view is stored in the query string, so the URL can be shared or
   reloaded: `mode=column` (table is the default), `namespaces=["<namespace>"]`,
   `degree=<1-4>` (or `all`), `direction=<upstream|downstream>`, `selected=<node or column id>`,

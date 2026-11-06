@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type MouseEvent } from 'react';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -11,8 +11,29 @@ import {
   type Edge,
   type Node,
 } from '@xyflow/react';
-import { Link, useNavigate, useSearch } from '@tanstack/react-router';
-import { ChevronDown, ChevronUp, LocateFixed, Pin, PinOff } from 'lucide-react';
+import { useNavigate, useSearch } from '@tanstack/react-router';
+import { Button } from '@base-ui-components/react/button';
+import { Toggle } from '@base-ui-components/react/toggle';
+import { ToggleGroup } from '@base-ui-components/react/toggle-group';
+import { Select } from '@base-ui-components/react/select';
+import { Checkbox } from '@base-ui-components/react/checkbox';
+import { Toolbar } from '@base-ui-components/react/toolbar';
+import { Tooltip } from '@base-ui-components/react/tooltip';
+import {
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Columns3,
+  ListFilter,
+  LocateFixed,
+  Maximize2,
+  Pin,
+  PinOff,
+  RefreshCw,
+  Search,
+  Table2,
+  X,
+} from 'lucide-react';
 import type { ColumnEdge, Crud, DatasetField, DatasetNode, Graph, LineageEdge, LineageNode } from '../shared/types.ts';
 import type { ExplorerSearch, LineageDegree, LineageDirection, Mode } from './search.ts';
 import { useGraph } from './useGraph.ts';
@@ -39,6 +60,21 @@ const DIRECTION_OPTIONS: { value: LineageDirection; label: string; title: string
   { value: 'downstream', label: 'Downstream', title: 'Downstream only' },
   { value: 'upstream', label: 'Upstream', title: 'Upstream only' },
 ];
+
+function ToolbarIconButton({ label, children, ...props }: ComponentProps<typeof Toolbar.Button> & { label: string }) {
+  return (
+    <Tooltip.Root>
+      <Tooltip.Trigger render={<Toolbar.Button {...props} />} aria-label={label}>
+        {children}
+      </Tooltip.Trigger>
+      <Tooltip.Portal>
+        <Tooltip.Positioner className="popup-positioner" sideOffset={8}>
+          <Tooltip.Popup className="tooltip">{label}</Tooltip.Popup>
+        </Tooltip.Positioner>
+      </Tooltip.Portal>
+    </Tooltip.Root>
+  );
+}
 
 const colKey = (datasetId: string, field: string) => `${datasetId}\u0001${field}`;
 const splitColKey = (key: string) => {
@@ -442,32 +478,30 @@ function Explorer() {
 
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <h1>Lineage explorer</h1>
-        <nav className="nav" aria-label="Views">
-          <Link to="/" className="nav-link on">
-            Graph
-          </Link>
-          <Link to="/nodes" className="nav-link">
-            Nodes
-          </Link>
-        </nav>
-        <div className="segmented" role="radiogroup" aria-label="Lineage level">
-          {(['table', 'column'] as const).map((m) => (
-            <button
-              key={m}
-              role="radio"
-              aria-checked={mode === m}
-              className={mode === m ? 'on' : ''}
-              onClick={() => setMode(m)}
-            >
-              {m === 'table' ? 'Table lineage' : 'Column lineage'}
-            </button>
-          ))}
-        </div>
+    <main className="stage">
+      <Toolbar.Root className="toolbar" aria-label="Graph controls">
+        <ToggleGroup
+          className="segmented compact"
+          aria-label="Lineage level"
+          value={[mode]}
+          onValueChange={(values) => {
+            // Keep the group single-select: ignore clearing the last toggle.
+            const next = values[0] as Mode | undefined;
+            if (next) setMode(next);
+          }}
+        >
+          <Toggle value="table" className="segment" aria-label="Table lineage" title="Table lineage">
+            <Table2 size={15} aria-hidden="true" />
+            Table
+          </Toggle>
+          <Toggle value="column" className="segment" aria-label="Column lineage" title="Column lineage">
+            <Columns3 size={15} aria-hidden="true" />
+            Column
+          </Toggle>
+        </ToggleGroup>
         <div className="search">
-          <input
+          <Search size={15} className="search-icon" aria-hidden="true" />
+          <Toolbar.Input
             type="search"
             placeholder={mode === 'table' ? 'Find a job or dataset' : 'Find a dataset or column'}
             value={query}
@@ -478,30 +512,41 @@ function Explorer() {
             <ul className="results">
               {matches.map((m) => (
                 <li key={m.id}>
-                  <button onClick={() => focusNode(m.id)}>
+                  <Button className="result-item" onClick={() => focusNode(m.id)}>
                     <span className={`kind kind-${m.kind}`}>{m.kind}</span>
                     <span className="r-name">{m.name}</span>
                     <span className="r-ns">{m.context}</span>
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>
           )}
         </div>
-        <label className="field">
-          <span>Namespace</span>
-          <NamespacePicker
-            namespaces={availableNamespaces}
-            selected={namespaces}
-            onChange={(next) => updateSearch({ namespaces: next })}
-          />
-        </label>
-        <button className="btn" onClick={refreshDatabase} disabled={loading}>
-          {loading ? 'Loading…' : 'Refresh the database'}
-        </button>
-      </header>
+        <NamespacePicker
+          namespaces={availableNamespaces}
+          selected={namespaces}
+          onChange={(next) => updateSearch({ namespaces: next })}
+        />
+        <div className="toolbar-actions">
+          <ToolbarIconButton
+            className="toolbar-action"
+            label={loading ? 'Refreshing the database' : 'Refresh the database'}
+            onClick={refreshDatabase}
+            disabled={loading}
+          >
+            <RefreshCw size={17} className={loading ? 'spin' : undefined} aria-hidden="true" />
+          </ToolbarIconButton>
+          <ToolbarIconButton
+            className="toolbar-action"
+            label="Fit view"
+            onClick={() => fitView({ padding: 0.2, duration: 300 })}
+          >
+            <Maximize2 size={17} aria-hidden="true" />
+          </ToolbarIconButton>
+        </div>
+      </Toolbar.Root>
 
-      <main className="stage">
+      <div className="stage-body">
         {error && (
           <div className="banner error" role="alert">
             Could not load the lineage graph: {error}. Check the Quack server (it starts with `pnpm dev`) and the table and column names in shared/schema.ts.
@@ -529,11 +574,6 @@ function Explorer() {
           >
             <Background gap={24} size={1} color="#d6dcdc" />
             <Controls showInteractive={false} showFitView={false} />
-            <Panel position="top-right">
-              <button className="btn" onClick={() => fitView({ padding: 0.2, duration: 300 })}>
-                Fit view
-              </button>
-            </Panel>
             {pinnedNode && (
               <Panel position="top-left" className="pinned-panel">
                 <PinnedPanel
@@ -597,8 +637,8 @@ function Explorer() {
             />
           </aside>
         )}
-      </main>
-    </div>
+      </div>
+    </main>
   );
 }
 
@@ -620,7 +660,7 @@ interface DetailsProps {
 function NodeLink({ node, onSelect }: { node: LineageNode | undefined; onSelect: (id: string) => void }) {
   if (!node) return null;
   return (
-    <button className="link" onClick={() => onSelect(node.id)} title={`${node.namespace}\n${node.name}`}>
+    <Button className="link" onClick={() => onSelect(node.id)} title={`${node.namespace}\n${node.name}`}>
       {node.title && node.title !== node.name ? (
         <>
           <span>{node.title}</span>
@@ -630,7 +670,7 @@ function NodeLink({ node, onSelect }: { node: LineageNode | undefined; onSelect:
         <span className="mono">{node.name}</span>
       )}
       <span className="muted small">{node.namespace}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -679,13 +719,13 @@ function PinnedPanel({
             {title}
           </div>
           <div className="pinned-head-actions">
-            <button className="icon-btn" onClick={onReveal} aria-label={revealLabel} title={revealLabel}>
+            <Button className="icon-btn" onClick={onReveal} aria-label={revealLabel} title={revealLabel}>
               <LocateFixed size={15} aria-hidden="true" />
-            </button>
-            <button className="icon-btn" onClick={onUnpin} aria-label="Unpin node" title="Unpin node">
+            </Button>
+            <Button className="icon-btn" onClick={onUnpin} aria-label="Unpin node" title="Unpin node">
               <PinOff size={15} aria-hidden="true" />
-            </button>
-            <button
+            </Button>
+            <Button
               className="icon-btn"
               onClick={() => setCollapsed(false)}
               aria-label="Expand pinned card"
@@ -693,7 +733,7 @@ function PinnedPanel({
               title="Expand pinned card"
             >
               <ChevronDown size={16} aria-hidden="true" />
-            </button>
+            </Button>
           </div>
         </div>
       ) : (
@@ -704,10 +744,10 @@ function PinnedPanel({
               Pinned
             </span>
             <div className="pinned-head-actions">
-              <button className="icon-btn" onClick={onUnpin} aria-label="Unpin node" title="Unpin node">
+              <Button className="icon-btn" onClick={onUnpin} aria-label="Unpin node" title="Unpin node">
                 <PinOff size={15} aria-hidden="true" />
-              </button>
-              <button
+              </Button>
+              <Button
                 className="icon-btn"
                 onClick={() => setCollapsed(true)}
                 aria-label="Collapse pinned card"
@@ -715,7 +755,7 @@ function PinnedPanel({
                 title="Collapse pinned card"
               >
                 <ChevronUp size={16} aria-hidden="true" />
-              </button>
+              </Button>
             </div>
           </div>
           <div className="pinned-badges">
@@ -731,52 +771,76 @@ function PinnedPanel({
           <div className="pinned-sub muted small">{node.namespace}</div>
           {node.description && <p className="pinned-desc">{node.description}</p>}
           <div className="pinned-degree">
-            <span>Degree</span>
+            <span id="pinned-degree-label">Degree</span>
             <div className="pinned-degree-controls">
-              <select
-                aria-label="Degree"
+              <Select.Root
                 value={degree === 'all' ? lastDegree : degree}
                 disabled={degree === 'all'}
-                onChange={(e) => changeDegree(e.target.value as LineageDegree)}
-                title="Number of hops shown around the pinned node"
+                onValueChange={(value) => changeDegree(value as LineageDegree)}
               >
-                {(['1', '2', '3', '4'] as const).map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
+                <Select.Trigger
+                  className="select-trigger compact"
+                  aria-labelledby="pinned-degree-label"
+                  title="Number of hops shown around the pinned node"
+                >
+                  <Select.Value />
+                  <Select.Icon className="select-icon">
+                    <ChevronDown size={13} aria-hidden="true" />
+                  </Select.Icon>
+                </Select.Trigger>
+                <Select.Portal>
+                  <Select.Positioner className="popup-positioner" sideOffset={6} alignItemWithTrigger={false}>
+                    <Select.Popup className="select-popup popup">
+                      <Select.List>
+                        {(['1', '2', '3', '4'] as const).map((d) => (
+                          <Select.Item key={d} value={d} className="select-item">
+                            <Select.ItemIndicator className="select-check">
+                              <Check size={13} strokeWidth={3} aria-hidden="true" />
+                            </Select.ItemIndicator>
+                            <Select.ItemText>{d}</Select.ItemText>
+                          </Select.Item>
+                        ))}
+                      </Select.List>
+                    </Select.Popup>
+                  </Select.Positioner>
+                </Select.Portal>
+              </Select.Root>
               <label className="pinned-degree-all" title="Do not limit the displayed nodes by degree">
-                <input
-                  type="checkbox"
+                <Checkbox.Root
+                  className="checkbox"
                   checked={degree === 'all'}
-                  onChange={(e) => changeDegree(e.target.checked ? 'all' : lastDegree)}
-                />
+                  onCheckedChange={(checked) => changeDegree(checked ? 'all' : lastDegree)}
+                >
+                  <Checkbox.Indicator className="checkbox-indicator" keepMounted>
+                    <Check size={12} strokeWidth={3} aria-hidden="true" />
+                  </Checkbox.Indicator>
+                </Checkbox.Root>
                 All
               </label>
             </div>
           </div>
           <div className="pinned-filter">
             <span>Show</span>
-            <div className="pinned-radio" role="radiogroup" aria-label="Direction from the pinned node">
+            <ToggleGroup
+              className="segmented compact"
+              aria-label="Direction from the pinned node"
+              value={[direction]}
+              onValueChange={(values) => {
+                const next = values[0] as LineageDirection | undefined;
+                if (next) onDirectionChange(next);
+              }}
+            >
               {DIRECTION_OPTIONS.map(({ value, label, title }) => (
-                <button
-                  key={value}
-                  role="radio"
-                  aria-checked={direction === value}
-                  className={direction === value ? 'on' : ''}
-                  onClick={() => onDirectionChange(value)}
-                  aria-label={title}
-                  title={title}
-                >
+                <Toggle key={value} value={value} className="segment" aria-label={title} title={title}>
                   {label}
-                </button>
+                </Toggle>
               ))}
-            </div>
+            </ToggleGroup>
           </div>
-          <button className="btn small pinned-reveal" onClick={onReveal}>
+          <Button className="btn small pinned-reveal" onClick={onReveal}>
+            <LocateFixed size={15} aria-hidden="true" />
             {revealLabel}
-          </button>
+          </Button>
         </>
       )}
     </div>
@@ -810,30 +874,30 @@ function Details(props: DetailsProps) {
         <span className={`kind kind-${kind}`}>{kind}</span>
         <div className="details-head-actions">
           {!isColumn && (
-            <button
-              className={`btn small pin-toggle${isPinned ? ' on' : ''}`}
-              onClick={() => onTogglePin(selection.node.id)}
-              aria-pressed={isPinned}
+            <Toggle
+              className="btn small pin-toggle"
+              pressed={isPinned}
+              onPressedChange={() => onTogglePin(selection.node.id)}
               aria-label={isPinned ? 'Unpin node' : 'Pin node to the viewport'}
               title={isPinned ? 'Unpin this node from the viewport' : 'Pin this node to the viewport'}
             >
               <Pin size={15} aria-hidden="true" />
-            </button>
+            </Toggle>
           )}
           {!isColumn && selection.node.archetype && (
             <span className="archetype-badge static">{selection.node.archetype}</span>
           )}
-          <button className="icon-btn" onClick={onClose} aria-label="Close details">
-            ×
-          </button>
+          <Button className="icon-btn" onClick={onClose} aria-label="Close details" title="Close details">
+            <X size={17} aria-hidden="true" />
+          </Button>
         </div>
       </div>
       <h2 className="mono">{heading}</h2>
       {isColumn ? (
         <p className="muted">
-          <button className="link inline" onClick={() => onSelect(selection.dataset.id)}>
+          <Button className="link inline" onClick={() => onSelect(selection.dataset.id)}>
             <span className="mono">{selection.dataset.name}</span>
-          </button>
+          </Button>
           {selection.field.type && <span className="mono"> · {selection.field.type}</span>}
         </p>
       ) : (
@@ -860,9 +924,10 @@ function Details(props: DetailsProps) {
         </div>
       </dl>
 
-      <button className={`btn wide${isolate ? ' on' : ''}`} onClick={onToggleIsolate}>
+      <Button className={`btn wide${isolate ? ' on' : ''}`} onClick={onToggleIsolate}>
+        <ListFilter size={15} aria-hidden="true" />
         {isolate ? 'Show the full graph' : 'Show only this lineage'}
-      </button>
+      </Button>
 
       {isColumn ? (
         <ColumnDetails dataset={selection.dataset} field={selection.field} graph={graph} nodeById={nodeById} onSelect={onSelect} />
@@ -886,10 +951,10 @@ function Details(props: DetailsProps) {
                 {selection.node.fields.map((f) => (
                   <li key={f.name}>
                     {mode === 'column' ? (
-                      <button className="link" onClick={() => onSelect(colKey(selection.node.id, f.name))}>
+                      <Button className="link" onClick={() => onSelect(colKey(selection.node.id, f.name))}>
                         <span className="mono">{f.name}</span>
                         {f.type && <span className="muted small mono">{f.type}</span>}
-                      </button>
+                      </Button>
                     ) : (
                       <div className="item-row">
                         <span className="mono">{f.name}</span>
@@ -942,10 +1007,10 @@ function ColumnDetails({ dataset, field, graph, nodeById, onSelect }: { dataset:
             const job = e.job ? nodeById.get(e.job) : undefined;
             return (
               <li key={e.id}>
-                <button className="link" onClick={() => onSelect(colKey(e[side], f))}>
+                <Button className="link" onClick={() => onSelect(colKey(e[side], f))}>
                   <span className="mono">{f}</span>
                   <span className="muted small mono">{ds?.name}</span>
-                </button>
+                </Button>
                 <div className="item-meta">
                   <span className={`badge-t${isIndirect(e) ? ' indirect' : ''}`}>{transformationLabel(e)}</span>
                   {job && (

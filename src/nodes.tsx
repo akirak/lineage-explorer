@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Handle, Position, useUpdateNodeInternals, type Node, type NodeProps } from '@xyflow/react';
+import { Pin } from 'lucide-react';
 import type { DatasetNode as DatasetData, JobNode as JobData } from '../shared/types.ts';
 
 export type Role = 'none' | 'selected' | 'up' | 'down';
@@ -7,6 +8,7 @@ export type Role = 'none' | 'selected' | 'up' | 'down';
 type Highlight = {
   role?: Role;
   dim?: boolean;
+  pinned?: boolean;
 };
 
 export type TableData = DatasetData &
@@ -36,13 +38,21 @@ const nodeTooltip = (
   [title && title !== name ? title : null, name, namespace, archetype, description].filter(Boolean).join('\n');
 const archetypeClass = (archetype: string | null) => (archetype ? ' has-archetype' : '');
 
+const PinBadge = () => (
+  <span className="pin-badge" title="Pinned">
+    <Pin size={10} aria-hidden="true" />
+    <span className="sr-only">Pinned</span>
+  </span>
+);
+
 export function DatasetNode({ data }: NodeProps<DatasetFlowNode>) {
   return (
     <div
-      className={`node dataset role-${data.role}${data.dim ? ' dim' : ''}${archetypeClass(data.archetype)}`}
+      className={`node dataset role-${data.role}${data.dim ? ' dim' : ''}${data.pinned ? ' pinned' : ''}${archetypeClass(data.archetype)}`}
       title={nodeTooltip(data.title, data.name, data.namespace, data.description, data.archetype)}
     >
       <Handle type="target" position={Position.Left} style={handleStyle} />
+      {data.pinned && <PinBadge />}
       <div className="node-name">{nodeLabel(data.title, data.name)}</div>
       <div className="node-ns">{data.namespace}</div>
       {data.archetype && <span className="archetype-badge">{data.archetype}</span>}
@@ -54,10 +64,11 @@ export function DatasetNode({ data }: NodeProps<DatasetFlowNode>) {
 export function JobNode({ data }: NodeProps<JobFlowNode>) {
   return (
     <div
-      className={`node job role-${data.role}${data.dim ? ' dim' : ''}${archetypeClass(data.archetype)}`}
+      className={`node job role-${data.role}${data.dim ? ' dim' : ''}${data.pinned ? ' pinned' : ''}${archetypeClass(data.archetype)}`}
       title={nodeTooltip(data.title, data.name, data.namespace, data.description, data.archetype)}
     >
       <Handle type="target" position={Position.Left} style={handleStyle} />
+      {data.pinned && <PinBadge />}
       <div className="node-text">
         <div className="node-name">{nodeLabel(data.title, data.name)}</div>
         <div className="node-ns">{data.namespace}</div>
@@ -75,11 +86,12 @@ export function TableNode({ id, data }: NodeProps<TableFlowNode>) {
   useEffect(() => updateNodeInternals(id), [id, fieldsKey, updateNodeInternals]);
 
   return (
-    <div className={`table-node role-${data.role}${data.dim ? ' dim' : ''}`}>
+    <div className={`table-node role-${data.role}${data.dim ? ' dim' : ''}${data.pinned ? ' pinned' : ''}`}>
       <div
         className={`table-head${archetypeClass(data.archetype)}`}
         title={nodeTooltip(data.title, data.name, data.namespace, data.description, data.archetype)}
       >
+        {data.pinned && <PinBadge />}
         <div className="node-name">{nodeLabel(data.title, data.name)}</div>
         <div className="node-ns">{data.namespace}</div>
         {data.archetype && <span className="archetype-badge">{data.archetype}</span>}

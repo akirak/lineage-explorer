@@ -348,7 +348,7 @@ function Explorer() {
       positioned.map((n) => {
         if (mode === 'table') {
           const role = roleOf(n.id);
-          return { ...n, data: { ...n.data, role, dim: hasSelection && role === 'none' } };
+          return { ...n, data: { ...n.data, role, dim: hasSelection && role === 'none', pinned: pinned === n.id } };
         }
         const d = n.data as TableFlowNode['data'];
         const fieldRoles: Record<string, Role> = {};
@@ -361,9 +361,9 @@ function Explorer() {
           down ||= r === 'down';
         }
         const role: Role = n.id === selectedDatasetId ? 'selected' : up ? 'up' : down ? 'down' : 'none';
-        return { ...n, data: { ...d, fieldRoles, role, dim: hasSelection && role === 'none' } };
+        return { ...n, data: { ...d, fieldRoles, role, dim: hasSelection && role === 'none', pinned: pinned === n.id } };
       }),
-    [positioned, mode, roleOf, hasSelection, selectedDatasetId],
+    [positioned, mode, roleOf, hasSelection, selectedDatasetId, pinned],
   );
 
   const rfEdges = useMemo<Edge[]>(() => {

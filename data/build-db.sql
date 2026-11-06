@@ -5,7 +5,7 @@
 CREATE OR REPLACE TABLE job (namespace VARCHAR, name VARCHAR, title VARCHAR, description VARCHAR, archetype VARCHAR);
 CREATE OR REPLACE TABLE dataset (namespace VARCHAR, name VARCHAR, title VARCHAR, description VARCHAR, archetype VARCHAR);
 CREATE OR REPLACE TABLE job_input (job_namespace VARCHAR, job_name VARCHAR, dataset_namespace VARCHAR, dataset_name VARCHAR);
-CREATE OR REPLACE TABLE job_output (job_namespace VARCHAR, job_name VARCHAR, dataset_namespace VARCHAR, dataset_name VARCHAR);
+CREATE OR REPLACE TABLE job_output (job_namespace VARCHAR, job_name VARCHAR, dataset_namespace VARCHAR, dataset_name VARCHAR, crud VARCHAR);
 CREATE OR REPLACE TABLE dataset_field (dataset_namespace VARCHAR, dataset_name VARCHAR, field_name VARCHAR, field_type VARCHAR, description VARCHAR);
 CREATE OR REPLACE TABLE column_lineage (
   job_namespace VARCHAR, job_name VARCHAR,
@@ -22,7 +22,8 @@ INSERT INTO job VALUES
   ('airflow', 'ingest_customers', 'Ingest customers', 'Copies raw customers from Postgres into the lake', 'ingestion'),
   ('spark', 'build_orders_clean', 'Build clean orders', 'Cleans and normalizes raw orders', 'transformation'),
   ('spark', 'build_revenue_daily', 'Build daily revenue', 'Aggregates clean orders into daily revenue', NULL),
-  ('dbt', 'mart_customer_ltv', 'Customer LTV mart', 'Computes customer lifetime value', 'mart');
+  ('dbt', 'mart_customer_ltv', 'Customer LTV mart', 'Computes customer lifetime value', 'mart'),
+  ('airflow', 'expire_order_snapshots', 'Expire order snapshots', 'Deletes order snapshots past the retention window', 'maintenance');
 
 INSERT INTO dataset_field VALUES
   ('postgres://prod', 'public.orders', 'order_id', 'BIGINT', 'Primary key'),
@@ -75,6 +76,10 @@ INSERT INTO dataset_field VALUES
 INSERT INTO dataset
 SELECT DISTINCT dataset_namespace, dataset_name, NULL, NULL, NULL FROM dataset_field;
 
+-- A dataset that only appears as the output of a delete job, with no columns.
+INSERT INTO dataset VALUES
+  ('s3://lake', 'snapshots/orders', 'Order snapshots', 'Snapshots dropped after the retention window', 'staging');
+
 -- Optional human-friendly titles and descriptions for a few datasets.
 UPDATE dataset SET title = 'Orders', description = 'Raw orders from the production Postgres database' WHERE namespace = 'postgres://prod' AND name = 'public.orders';
 UPDATE dataset SET title = 'Clean orders', description = 'Cleaned and normalized orders' WHERE namespace = 's3://lake' AND name = 'clean/orders';
@@ -93,12 +98,14 @@ INSERT INTO job_input VALUES
   ('spark', 'build_revenue_daily', 's3://lake', 'clean/orders'),
   ('dbt', 'mart_customer_ltv', 's3://lake', 'clean/orders');
 
+-- crud is optional: C creates, U updates, D deletes the output dataset.
 INSERT INTO job_output VALUES
-  ('airflow', 'ingest_orders', 's3://lake', 'raw/orders'),
-  ('airflow', 'ingest_customers', 's3://lake', 'raw/customers'),
-  ('spark', 'build_orders_clean', 's3://lake', 'clean/orders'),
-  ('spark', 'build_revenue_daily', 'warehouse', 'marts.revenue_daily'),
-  ('dbt', 'mart_customer_ltv', 'warehouse', 'marts.customer_ltv');
+  ('airflow', 'ingest_orders', 's3://lake', 'raw/orders', 'C'),
+  ('airflow', 'ingest_customers', 's3://lake', 'raw/customers', 'C'),
+  ('spark', 'build_orders_clean', 's3://lake', 'clean/orders', 'U'),
+  ('spark', 'build_revenue_daily', 'warehouse', 'marts.revenue_daily', 'U'),
+  ('dbt', 'mart_customer_ltv', 'warehouse', 'marts.customer_ltv', 'U'),
+  ('airflow', 'expire_order_snapshots', 's3://lake', 'snapshots/orders', 'D');
 
 -- A view has one row per table or view it is defined over:
 --   marts.revenue_daily_us  over one table (marts.revenue_daily)

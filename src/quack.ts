@@ -27,7 +27,7 @@ import duckdbWorkerMvp from '@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.
 import { quackToken, quackUri } from 'virtual:quack-config';
 import { schema as s } from '../shared/schema.ts';
 import { graphQueries, type AvailableColumns } from '../shared/queries.ts';
-import type { ColumnEdge, DatasetField, DatasetNode, Graph, LineageEdge, LineageNode } from '../shared/types.ts';
+import type { ColumnEdge, Crud, DatasetField, DatasetNode, Graph, LineageEdge, LineageNode } from '../shared/types.ts';
 
 /** A row as the graph queries return them: every column is a string or NULL. */
 type Row = Record<string, string | null>;
@@ -124,6 +124,19 @@ interface IoRow {
   job_name: string;
 }
 
+interface WriteRow extends IoRow {
+  crud: string | null;
+}
+
+/** Most destructive first, so conflicting job_output rows keep the strongest marker. */
+const CRUD_ORDER: Crud[] = ['D', 'U', 'C'];
+
+/** Normalize job_output.crud to C, U or D; anything else is ignored. */
+function normalizeCrud(value: string | null): Crud | null {
+  const crud = value?.trim().toUpperCase();
+  return crud === 'C' || crud === 'U' || crud === 'D' ? crud : null;
+}
+
 interface FieldRow extends DatasetField {
   dataset_namespace: string;
   dataset_name: string;
@@ -161,7 +174,11 @@ async function loadAvailableColumns(query: QuackClient['query']): Promise<Availa
     );
     return new Set(rows.map((row) => row.column_name).filter((name): name is string => name != null));
   };
-  return { job: await columns(s.job.table), dataset: await columns(s.dataset.table) };
+  return {
+    job: await columns(s.job.table),
+    dataset: await columns(s.dataset.table),
+    output: await columns(s.output.table),
+  };
 }
 
 /** Build the full lineage graph from the database the Quack server holds. */
@@ -174,7 +191,7 @@ export async function loadGraph(): Promise<Graph> {
   const jobs = (await query(queries.jobs)) as unknown as NameRow[];
   const datasets = (await query(queries.datasets)) as unknown as NameRow[];
   const reads = (await query(queries.reads)) as unknown as IoRow[];
-  const writes = (await query(queries.writes)) as unknown as IoRow[];
+  const writes = (await query(queries.writes)) as unknown as WriteRow[];
   const fields = (await query(queries.fields)) as unknown as FieldRow[];
   const columnLineage = (await query(queries.columnLineage)) as unknown as ColumnLineageRow[];
   const views = (await query(queries.views)) as unknown as ViewRow[];
@@ -219,16 +236,30 @@ export async function loadGraph(): Promise<Graph> {
   }
 
   const edges = new Map<string, LineageEdge>();
-  const addEdge = (source: string, target: string, kind: 'io' | 'view' = 'io') => {
+  const addEdge = (source: string, target: string, kind: 'io' | 'view' = 'io', crud: Crud | null = null) => {
     const id = `${source}->${target}`;
-    if (!edges.has(id)) edges.set(id, { id, source, target, kind });
+    const existing = edges.get(id);
+    if (!existing) {
+      edges.set(id, { id, source, target, kind, crud });
+      return;
+    }
+    // Several job_output rows can describe the same pair; keep the strongest
+    // CRUD marker rather than letting the query order decide.
+    if (crud !== null && (existing.crud === null || CRUD_ORDER.indexOf(crud) < CRUD_ORDER.indexOf(existing.crud))) {
+      existing.crud = crud;
+    }
   };
 
   for (const read of reads) {
     addEdge(addDataset(read.dataset_namespace, read.dataset_name).id, addJob(read.job_namespace, read.job_name));
   }
   for (const write of writes) {
-    addEdge(addJob(write.job_namespace, write.job_name), addDataset(write.dataset_namespace, write.dataset_name).id);
+    addEdge(
+      addJob(write.job_namespace, write.job_name),
+      addDataset(write.dataset_namespace, write.dataset_name).id,
+      'io',
+      normalizeCrud(write.crud),
+    );
   }
   for (const view of views) {
     addEdge(addDataset(view.base_namespace, view.base_name).id, addDataset(view.view_namespace, view.view_name).id, 'view');

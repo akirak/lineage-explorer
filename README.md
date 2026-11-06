@@ -120,7 +120,7 @@ The explorer models lineage only; it does not read runs or run events.
 | job | namespace, name, optional title, description, archetype |
 | dataset | namespace, name, optional title, description, archetype |
 | job_input | job namespace, job name, dataset namespace, dataset name |
-| job_output | job namespace, job name, dataset namespace, dataset name |
+| job_output | job namespace, job name, dataset namespace, dataset name, optional crud |
 | view | view dataset namespace + name, base dataset namespace + name |
 | dataset_field | dataset namespace, dataset name, field name, field type, description |
 | column_lineage | job namespace, job name, input dataset namespace + name + field, output dataset namespace + name + field, transformation type, transformation subtype |
@@ -144,6 +144,12 @@ the node label (with the description in the tooltip and details panel).
 in the details panel, and in the **/nodes** table (where the list can also be filtered
 by it). It never affects the lineage graph itself: nodes, edges, and column lineage
 are built without it.
+
+`crud` on `job_output` is an optional marker for what the job does to the output
+dataset: `C` creates it, `U` updates it, and `D` deletes it. In table lineage the
+job -> dataset arrows are colored green, amber, or red by this marker, and the
+legend lists the markers present in the graph. Without the column the output
+arrows keep the default color. Input and view edges are never colored by CRUD.
 
 ## Using it
 

@@ -11,6 +11,9 @@
   --ok: #2e7d4f;
   --fail: #b3382c;
   --run: #c58a12;
+  --crud-c: #2e7d4f;
+  --crud-u: #b7791f;
+  --crud-d: #b3382c;
   --idle: #8b979a;
   --sans: 'Hanken Grotesk', system-ui, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, monospace;
@@ -155,6 +158,9 @@ button, input, select { font: inherit; color: inherit; }
 .line { display: inline-block; width: 22px; height: 0; border-top: 2px solid var(--idle); }
 .line.indirect { border-top-style: dashed; }
 .line.view { border-top: 2px dashed #8b6bb8; }
+.line.crud-c { border-top-color: var(--crud-c); }
+.line.crud-u { border-top-color: var(--crud-u); }
+.line.crud-d { border-top-color: var(--crud-d); }
 
 .table-node { width: 260px; background: var(--surface); border: 1.5px solid var(--line); border-radius: 4px; cursor: pointer; transition: opacity 0.15s, border-color 0.15s, box-shadow 0.15s; }
 .table-node:hover { border-color: var(--ink); }

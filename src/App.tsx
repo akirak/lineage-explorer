@@ -13,7 +13,7 @@ import {
 } from '@xyflow/react';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { ChevronDown, ChevronUp, LocateFixed, Pin, PinOff } from 'lucide-react';
-import type { ColumnEdge, DatasetField, DatasetNode, Graph, LineageEdge, LineageNode } from '../shared/types.ts';
+import type { ColumnEdge, Crud, DatasetField, DatasetNode, Graph, LineageEdge, LineageNode } from '../shared/types.ts';
 import type { ExplorerSearch, LineageDegree, Mode } from './search.ts';
 import { useGraph } from './useGraph.ts';
 import { adjacency, layoutNodes, tableHeight, traverse, NODE_W, NODE_H, TABLE_W } from './layout.ts';
@@ -24,6 +24,15 @@ const EDGE_IDLE = '#9aa6a9';
 const EDGE_ACTIVE = '#0d6b62';
 const EDGE_VIEW = '#8b6bb8';
 const EDGE_VIEW_ACTIVE = '#5b3d8f';
+
+// Output edges carry the job_output.crud marker: create, update, or delete.
+const EDGE_CRUD: Record<Crud, { idle: string; active: string }> = {
+  C: { idle: '#2e7d4f', active: '#1d5c37' },
+  U: { idle: '#b7791f', active: '#8a5a12' },
+  D: { idle: '#b3382c', active: '#7f241b' },
+};
+const CRUD_LABEL: Record<Crud, string> = { C: 'Create', U: 'Update', D: 'Delete' };
+const CRUD_LEGEND: Crud[] = ['C', 'U', 'D'];
 
 const colKey = (datasetId: string, field: string) => `${datasetId}\u0001${field}`;
 const splitColKey = (key: string) => {
@@ -42,8 +51,22 @@ type Selection =
   | { kind: 'node'; node: LineageNode }
   | { kind: 'column'; dataset: DatasetNode; field: DatasetField };
 
-function edgeStyle(active: boolean, hasSelection: boolean, dashed = false, view = false) {
-  const color = view ? (active ? EDGE_VIEW_ACTIVE : EDGE_VIEW) : active ? EDGE_ACTIVE : EDGE_IDLE;
+function edgeStyle(
+  active: boolean,
+  hasSelection: boolean,
+  dashed = false,
+  view = false,
+  crud: Crud | null = null,
+) {
+  const color = view
+    ? active
+      ? EDGE_VIEW_ACTIVE
+      : EDGE_VIEW
+    : crud
+      ? EDGE_CRUD[crud][active ? 'active' : 'idle']
+      : active
+        ? EDGE_ACTIVE
+        : EDGE_IDLE;
   return {
     markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
     style: {
@@ -337,7 +360,13 @@ function Explorer() {
       return tableVisible.edges.map((e: LineageEdge) => ({
         ...e,
         type: 'smoothstep',
-        ...edgeStyle(hasSelection && lineage.has(e.source) && lineage.has(e.target), hasSelection, false, e.kind === 'view'),
+        ...edgeStyle(
+          hasSelection && lineage.has(e.source) && lineage.has(e.target),
+          hasSelection,
+          false,
+          e.kind === 'view',
+          e.crud,
+        ),
       }));
     }
     return columnVisible.links.map(({ edge: e, source, target }) => ({
@@ -519,6 +548,11 @@ function Explorer() {
                 <span><i className="swatch ds" /> Dataset</span>
                 <span><i className="swatch jb" /> Job</span>
                 <span><i className="line view" /> View</span>
+                {CRUD_LEGEND.filter((crud) => scoped.edges.some((e) => e.crud === crud)).map((crud) => (
+                  <span key={crud}>
+                    <i className={`line crud-${crud.toLowerCase()}`} /> {CRUD_LABEL[crud]}
+                  </span>
+                ))}
               </>
             ) : (
               <>

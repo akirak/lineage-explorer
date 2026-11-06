@@ -7,7 +7,7 @@
 //   job            one row per job              (namespace, name, optional title, description, archetype)
 //   dataset        one row per dataset          (namespace, name, optional title, description, archetype)
 //   job_input      datasets a job reads         (job, dataset)
-//   job_output     datasets a job writes        (job, dataset)
+//   job_output     datasets a job writes        (job, dataset, optional crud)
 //   view           one row per table or view a  (view dataset, base dataset)
 //                  view is defined over, in the
 //                  same database
@@ -15,6 +15,10 @@
 //   column_lineage one row per input field of   (job, input dataset + field,
 //                  an output field                output dataset + field,
 //                                                 transformation type + subtype)
+//
+// crud on job_output is an optional presentation-only marker for whether the job
+// creates (C), updates (U), or deletes (D) the output dataset. When the column is
+// absent the output edges are drawn in the default color.
 //
 // column_lineage follows the OpenLineage columnLineage facet: each output field
 // lists the input fields it derives from, with a transformation type (DIRECT or
@@ -38,6 +42,7 @@ export const schema = {
     jobName: 'job_name',
     namespace: 'dataset_namespace',
     name: 'dataset_name',
+    crud: 'crud',
   },
   view: {
     table: 'view',

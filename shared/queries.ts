@@ -7,6 +7,7 @@ const cl = s.columnLineage;
 export type AvailableColumns = {
   job: Set<string>;
   dataset: Set<string>;
+  output: Set<string>;
 };
 
 /** Select an optional column, or NULL when the column does not exist. */
@@ -35,7 +36,8 @@ export const graphQueries = (available: AvailableColumns) => ({
 
   writes: `
     SELECT DISTINCT ${q(s.output.namespace)} AS dataset_namespace, ${q(s.output.name)} AS dataset_name,
-           ${q(s.output.jobNamespace)} AS job_namespace, ${q(s.output.jobName)} AS job_name
+           ${q(s.output.jobNamespace)} AS job_namespace, ${q(s.output.jobName)} AS job_name,
+           ${opt(available.output, s.output.crud, 'crud')}
     FROM ${q(s.output.table)}`,
 
   views: `

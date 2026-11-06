@@ -27,6 +27,9 @@ export type DatasetNode = {
 
 export type LineageNode = JobNode | DatasetNode;
 
+/** Create/update/delete marker for a job's output dataset (job_output.crud). */
+export type Crud = 'C' | 'U' | 'D';
+
 /** Table-level edge: dataset -> job (input) or job -> dataset (output). */
 export type LineageEdge = {
   id: string;
@@ -34,6 +37,8 @@ export type LineageEdge = {
   target: string;
   /** 'io' for job input/output edges, 'view' for a view over a table in the same database. */
   kind: 'io' | 'view';
+  /** C, U or D from the optional job_output.crud column; null for input and view edges. */
+  crud: Crud | null;
 };
 
 /** Column-level edge from an input field to an output field (OpenLineage columnLineage facet). */

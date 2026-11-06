@@ -28,7 +28,13 @@ remotely on the server; nothing about the database is read client-side.
 
 The plugin generates a fresh Quack token on every dev-server start and hands
 the URI and token to the browser through a virtual module
-(`virtual:quack-config`), so nothing has to be configured by hand.
+(`virtual:quack-config`), so nothing has to be configured by hand. To pin the
+token instead (e.g. to keep other clients working across dev-server restarts),
+pass it as a plugin option:
+
+```ts
+rebuildDatabase({ quack: { token: 'my-fixed-token' } })
+```
 
 Production:
 

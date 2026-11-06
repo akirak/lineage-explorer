@@ -5,6 +5,9 @@ export type Mode = 'table' | 'column';
 /** Maximum lineage depth shown around the pinned node; 'all' disables the limit. */
 export type LineageDegree = 'all' | '1' | '2' | '3' | '4';
 
+/** Which side of the pinned node the degree filter covers. */
+export type LineageDirection = 'all' | 'upstream' | 'downstream';
+
 /** UI state kept in the URL query string so a view can be shared or reloaded. */
 export type ExplorerSearch = {
   mode: Mode;
@@ -12,6 +15,8 @@ export type ExplorerSearch = {
   namespaces: string[];
   /** Maximum number of upstream/downstream hops to show around the pinned node. */
   degree: LineageDegree;
+  /** Restrict the pinned node's visible lineage to upstream or downstream nodes. */
+  direction: LineageDirection;
   /** Selected node id, or a column key (`<datasetId>\u0001<field>`); empty when nothing is selected. */
   selected: string;
   /** Node id pinned to the graph viewport; empty when nothing is pinned. */
@@ -29,6 +34,7 @@ export const defaultSearch: ExplorerSearch = {
   mode: 'table',
   namespaces: [],
   degree: 'all',
+  direction: 'all',
   selected: '',
   pinned: '',
   isolate: false,
@@ -46,10 +52,12 @@ function parseNamespaces(search: ExplorerSearchInput): string[] {
 
 export function parseSearch(search: ExplorerSearchInput): ExplorerSearch {
   const degree = search.degree;
+  const direction = search.direction;
   return {
     mode: search.mode === 'column' ? 'column' : 'table',
     namespaces: parseNamespaces(search),
     degree: degree === '1' || degree === '2' || degree === '3' || degree === '4' ? degree : 'all',
+    direction: direction === 'upstream' || direction === 'downstream' ? direction : 'all',
     selected: typeof search.selected === 'string' ? search.selected : '',
     pinned: typeof search.pinned === 'string' ? search.pinned : '',
     isolate: search.isolate === true || String(search.isolate) === 'true',

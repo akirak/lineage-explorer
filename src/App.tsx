@@ -14,7 +14,7 @@ import {
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { ChevronDown, ChevronUp, LocateFixed, Pin, PinOff } from 'lucide-react';
 import type { ColumnEdge, Crud, DatasetField, DatasetNode, Graph, LineageEdge, LineageNode } from '../shared/types.ts';
-import type { ExplorerSearch, LineageDegree, Mode } from './search.ts';
+import type { ExplorerSearch, LineageDegree, LineageDirection, Mode } from './search.ts';
 import { useGraph } from './useGraph.ts';
 import { adjacency, layoutNodes, tableHeight, traverse, NODE_W, NODE_H, TABLE_W } from './layout.ts';
 import { inHandle, nodeTypes, outHandle, type LineageFlowNode, type Role, type TableFlowNode } from './nodes.tsx';
@@ -33,6 +33,12 @@ const EDGE_CRUD: Record<Crud, { idle: string; active: string }> = {
 };
 const CRUD_LABEL: Record<Crud, string> = { C: 'Create', U: 'Update', D: 'Delete' };
 const CRUD_LEGEND: Crud[] = ['C', 'U', 'D'];
+
+const DIRECTION_OPTIONS: { value: LineageDirection; label: string; title: string }[] = [
+  { value: 'all', label: 'All', title: 'Upstream and downstream nodes' },
+  { value: 'downstream', label: 'Downstream', title: 'Downstream only' },
+  { value: 'upstream', label: 'Upstream', title: 'Upstream only' },
+];
 
 const colKey = (datasetId: string, field: string) => `${datasetId}\u0001${field}`;
 const splitColKey = (key: string) => {
@@ -80,7 +86,7 @@ function edgeStyle(
 
 function Explorer() {
   const { setCenter, fitView } = useReactFlow();
-  const { mode, namespaces, degree, selected, pinned, isolate } = useSearch({ from: '/' });
+  const { mode, namespaces, degree, direction, selected, pinned, isolate } = useSearch({ from: '/' });
   const navigate = useNavigate({ from: '/' });
   const pendingCenter = useRef<string | null>(null);
   const { graph, error, loading, reload } = useGraph();
@@ -239,17 +245,22 @@ function Explorer() {
   }, [pinnedNode, nodeById, mode, scoped.columnEdges, tableAdj, datasets]);
 
   const pinnedLineage = useMemo<Set<string> | null>(() => {
-    if (degreeLimit === null || pinnedSeeds.length === 0) return null;
+    // A direction filter limits the graph even when the degree limit is off.
+    if ((degreeLimit === null && direction === 'all') || pinnedSeeds.length === 0) return null;
     const adj = mode === 'table' ? tableAdj : columnAdj;
     // Job seeds are already one hop away from the pinned job.
     const depth =
-      mode === 'column' && pinnedNode?.type === 'job' ? Math.max(0, degreeLimit - 1) : degreeLimit;
+      degreeLimit === null
+        ? Infinity
+        : mode === 'column' && pinnedNode?.type === 'job'
+          ? Math.max(0, degreeLimit - 1)
+          : degreeLimit;
     return new Set([
       ...pinnedSeeds,
-      ...traverse(pinnedSeeds, adj.up, depth),
-      ...traverse(pinnedSeeds, adj.down, depth),
+      ...(direction !== 'downstream' ? traverse(pinnedSeeds, adj.up, depth) : []),
+      ...(direction !== 'upstream' ? traverse(pinnedSeeds, adj.down, depth) : []),
     ]);
-  }, [pinnedSeeds, pinnedNode, mode, tableAdj, columnAdj, degreeLimit]);
+  }, [pinnedSeeds, pinnedNode, mode, tableAdj, columnAdj, degreeLimit, direction]);
 
   const roleOf = useCallback(
     (id: string): Role => {
@@ -530,6 +541,8 @@ function Explorer() {
                   selected={selectedId === pinnedNode.id}
                   degree={degree}
                   onDegreeChange={(next) => updateSearch({ degree: next })}
+                  direction={direction}
+                  onDirectionChange={(next) => updateSearch({ direction: next })}
                   onReveal={() => focusNode(pinnedNode.id)}
                   onUnpin={() => updateSearch({ pinned: '' })}
                 />
@@ -626,6 +639,8 @@ function PinnedPanel({
   selected,
   degree,
   onDegreeChange,
+  direction,
+  onDirectionChange,
   onReveal,
   onUnpin,
 }: {
@@ -633,6 +648,8 @@ function PinnedPanel({
   selected: boolean;
   degree: LineageDegree;
   onDegreeChange: (degree: LineageDegree) => void;
+  direction: LineageDirection;
+  onDirectionChange: (direction: LineageDirection) => void;
   onReveal: () => void;
   onUnpin: () => void;
 }) {
@@ -737,6 +754,24 @@ function PinnedPanel({
                 />
                 All
               </label>
+            </div>
+          </div>
+          <div className="pinned-filter">
+            <span>Show</span>
+            <div className="pinned-radio" role="radiogroup" aria-label="Direction from the pinned node">
+              {DIRECTION_OPTIONS.map(({ value, label, title }) => (
+                <button
+                  key={value}
+                  role="radio"
+                  aria-checked={direction === value}
+                  className={direction === value ? 'on' : ''}
+                  onClick={() => onDirectionChange(value)}
+                  aria-label={title}
+                  title={title}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
           <button className="btn small pinned-reveal" onClick={onReveal}>

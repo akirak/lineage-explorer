@@ -157,8 +157,8 @@ arrows keep the default color. Input and view edges are never colored by CRUD.
   (datasets drawn as tables, edges between columns) in the top bar.
 - The current view is stored in the query string, so the URL can be shared or
   reloaded: `mode=column` (table is the default), `namespaces=["<namespace>"]`,
-  `degree=<1-4>` (or `all`), `selected=<node or column id>`, `pinned=<node id>`, and
-  `isolate=true`. Default values are omitted. `?mode=column` opens column mode directly.
+  `degree=<1-4>` (or `all`), `direction=<upstream|downstream>`, `selected=<node or column id>`,
+  `pinned=<node id>`, and `isolate=true`. Default values are omitted. `?mode=column` opens column mode directly.
 - Click a node, or a column in column mode, to highlight its upstream (blue) and downstream (copper) lineage.
   In column mode, solid edges are direct transformations and dashed edges are indirect ones (joins, filters, grouping).
 - "Show only this lineage" hides everything else and re-lays out the graph. In column mode it also hides unrelated columns.
@@ -168,8 +168,10 @@ arrows keep the default color. Input and view edges are never colored by CRUD.
   was hidden. The card starts collapsed, showing just the node title and icon actions; its
   expanded form has a **Degree** select that limits the visible graph to one to four
   upstream/downstream hops from the pinned node in both table and column lineage; tick
-  **All** (the default) to remove the limit. The pinned node and degree are kept in the URL
-  as `pinned=<node id>` and `degree=<1-4|all>`.
+  **All** (the default) to remove the limit. A **Show** radio group below the degree control
+  filters the visible nodes to **All**, **Downstream** only, or **Upstream** only; the direction
+  filter also applies when the degree limit is off. The pinned node, degree, and direction are
+  kept in the URL as `pinned=<node id>`, `degree=<1-4|all>`, and `direction=<all|upstream|downstream>`.
 - Search by name or namespace (and column name in column mode); filter by one or more
   namespaces; reload to re-query the database.
 - **/nodes** lists every job and dataset in a table. Filter by text, namespace, type, or archetype; the filters live in the URL (`q`, `namespace`, `type`, `archetype`). Each row has a **Graph ->** link that opens that node in the lineage graph.

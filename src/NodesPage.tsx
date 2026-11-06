@@ -23,7 +23,7 @@ export default function NodesPage() {
   const { graph, error, loading } = useGraph();
 
   const update = (patch: Partial<NodesSearch>) =>
-    navigate({ search: (prev) => ({ ...(prev as NodesSearch), ...patch }), replace: true });
+    navigate({ search: (prev) => ({ ...(prev as NodesSearch), ...patch }) });
 
   const namespaces = useMemo(
     () => (graph ? [...new Set(graph.nodes.map((n) => n.namespace))].sort() : []),

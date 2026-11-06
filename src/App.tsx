@@ -76,7 +76,6 @@ function Explorer() {
           const current = prev as ExplorerSearch;
           return { ...current, ...(typeof patch === 'function' ? patch(current) : patch) };
         },
-        replace: true,
       }),
     [navigate],
   );

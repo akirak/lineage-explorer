@@ -140,7 +140,7 @@ pnpm validate   # validate ./openlineage.duckdb (or pass a path / set DUCKDB_PAT
 
 ## Deployment
 
-### Option A: Cloudflare Workers Free (Self-Contained Snapshot)
+### TODO: Option A: Cloudflare Workers Free (Self-Contained Snapshot)
 
 [`alchemy.run.ts`](./alchemy.run.ts) uses [Alchemy] to publish an **assets-only Cloudflare Worker** containing the prerendered SPA shell, JS/CSS bundles, DuckDB-Wasm, signed DuckDB browser extensions (`parquet` and `json`), and a Parquet snapshot built from `data/`.
 

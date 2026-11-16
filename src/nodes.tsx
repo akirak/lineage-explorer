@@ -100,15 +100,24 @@ export function TableNode({ id, data }: NodeProps<TableFlowNode>) {
         {data.fields.length === 0 && <li className="table-field empty">No column metadata</li>}
         {data.fields.map((f) => {
           const role = data.fieldRoles[f.name] ?? 'none';
+          const title = `${f.name}${f.required ? ' (required)' : ''}`;
           return (
             <li
               key={f.name}
               className={`table-field field-${role}`}
               data-field={f.name}
-              title={f.description ? `${f.name}: ${f.description}` : f.name}
+              title={f.description ? `${title}: ${f.description}` : title}
             >
               <Handle id={inHandle(f.name)} type="target" position={Position.Left} style={handleStyle} />
-              <span className="field-name">{f.name}</span>
+              <span className="field-name-wrap">
+                <span className="field-name">{f.name}</span>
+                {f.required && (
+                  <span className="field-required" title="Required">
+                    <span aria-hidden="true">*</span>
+                    <span className="sr-only">Required</span>
+                  </span>
+                )}
+              </span>
               {f.type && <span className="field-type">{f.type}</span>}
               <Handle id={outHandle(f.name)} type="source" position={Position.Right} style={handleStyle} />
             </li>

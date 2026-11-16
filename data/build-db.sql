@@ -6,7 +6,7 @@ CREATE OR REPLACE TABLE job (namespace VARCHAR, name VARCHAR, title VARCHAR, des
 CREATE OR REPLACE TABLE dataset (namespace VARCHAR, name VARCHAR, title VARCHAR, description VARCHAR, archetype VARCHAR);
 CREATE OR REPLACE TABLE job_input (job_namespace VARCHAR, job_name VARCHAR, dataset_namespace VARCHAR, dataset_name VARCHAR);
 CREATE OR REPLACE TABLE job_output (job_namespace VARCHAR, job_name VARCHAR, dataset_namespace VARCHAR, dataset_name VARCHAR, crud VARCHAR);
-CREATE OR REPLACE TABLE dataset_field (dataset_namespace VARCHAR, dataset_name VARCHAR, field_name VARCHAR, field_type VARCHAR, description VARCHAR);
+CREATE OR REPLACE TABLE dataset_field (dataset_namespace VARCHAR, dataset_name VARCHAR, field_name VARCHAR, field_type VARCHAR, description VARCHAR, required BOOLEAN);
 CREATE OR REPLACE TABLE column_lineage (
   job_namespace VARCHAR, job_name VARCHAR,
   input_dataset_namespace VARCHAR, input_dataset_name VARCHAR, input_field VARCHAR,
@@ -25,7 +25,7 @@ INSERT INTO job VALUES
   ('dbt', 'mart_customer_ltv', 'Customer LTV mart', 'Computes customer lifetime value', 'mart'),
   ('airflow', 'expire_order_snapshots', 'Expire order snapshots', 'Deletes order snapshots past the retention window', 'maintenance');
 
-INSERT INTO dataset_field VALUES
+INSERT INTO dataset_field (dataset_namespace, dataset_name, field_name, field_type, description) VALUES
   ('postgres://prod', 'public.orders', 'order_id', 'BIGINT', 'Primary key'),
   ('postgres://prod', 'public.orders', 'customer_id', 'BIGINT', NULL),
   ('postgres://prod', 'public.orders', 'amount', 'DECIMAL(12,2)', 'Order total in the original currency'),
@@ -72,6 +72,10 @@ INSERT INTO dataset_field VALUES
   ('warehouse', 'marts.us_revenue_share', 'us_revenue_usd', 'DECIMAL(14,2)', NULL),
   ('warehouse', 'marts.us_revenue_share', 'total_revenue_usd', 'DECIMAL(16,2)', NULL),
   ('warehouse', 'marts.us_revenue_share', 'us_share', 'DOUBLE', 'Share of the day''s revenue from the US');
+
+-- required is optional: a few key columns are marked, the rest stay NULL.
+UPDATE dataset_field SET required = TRUE
+WHERE field_name = 'order_id' OR field_name = 'customer_id';
 
 INSERT INTO dataset
 SELECT DISTINCT dataset_namespace, dataset_name, NULL, NULL, NULL FROM dataset_field;

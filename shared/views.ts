@@ -51,10 +51,12 @@ export function parquetViews(file: string): string[] {
  */
 export function duckDbViews(file: string): string[] {
   const views = [`ATTACH ${quoteString(file)} AS lineage_src (READ_ONLY);`];
-  for (const [table, columns] of schemaTables()) {
-    const select = columns.map((column) => quoteIdent(column)).join(', ');
+  // Select * rather than the mapped columns so optional columns (title,
+  // description, archetype, crud, required, ...) may be absent from the
+  // source database. Queries only reference columns they detect.
+  for (const table of schemaTables().keys()) {
     views.push(
-      `CREATE OR REPLACE VIEW ${quoteIdent(table)} AS SELECT ${select} FROM lineage_src.${quoteIdent(table)}`,
+      `CREATE OR REPLACE VIEW ${quoteIdent(table)} AS SELECT * FROM lineage_src.${quoteIdent(table)}`,
     );
   }
   return views;

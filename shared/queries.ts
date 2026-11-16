@@ -8,11 +8,12 @@ export type AvailableColumns = {
   job: Set<string>;
   dataset: Set<string>;
   output: Set<string>;
+  field?: Set<string>;
 };
 
 /** Select an optional column, or NULL when the column does not exist. */
-const opt = (available: Set<string>, column: string, alias: string) =>
-  available.has(column) ? `CAST(${q(column)} AS VARCHAR) AS ${q(alias)}` : `NULL AS ${q(alias)}`;
+const opt = (available: Set<string> | undefined, column: string, alias: string) =>
+  available?.has(column) ? `CAST(${q(column)} AS VARCHAR) AS ${q(alias)}` : `NULL AS ${q(alias)}`;
 
 export const graphQueries = (available: AvailableColumns) => ({
   jobs: `
@@ -48,7 +49,8 @@ export const graphQueries = (available: AvailableColumns) => ({
   fields: `
     SELECT ${q(s.field.namespace)} AS dataset_namespace, ${q(s.field.dataset)} AS dataset_name,
            ${q(s.field.name)} AS name, CAST(${q(s.field.type)} AS VARCHAR) AS type,
-           CAST(${q(s.field.description)} AS VARCHAR) AS description
+           CAST(${q(s.field.description)} AS VARCHAR) AS description,
+           ${opt(available.field, s.field.required, 'required')}
     FROM ${q(s.field.table)}`,
 
   columnLineage: `

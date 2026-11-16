@@ -113,7 +113,7 @@ Lineage Explorer models static lineage metadata (it does not read runtime job ru
 | `input` | `job_input` | `job_namespace`, `job_name`, `dataset_namespace`, `dataset_name` | — | Datasets read by a job (`dataset -> job`) |
 | `output` | `job_output` | `job_namespace`, `job_name`, `dataset_namespace`, `dataset_name` | `crud` | Datasets written by a job (`job -> dataset`) |
 | `view` | `view` | `view_namespace`, `view_name`, `base_namespace`, `base_name` | — | Direct `dataset -> dataset` edges for views over base tables/views |
-| `field` | `dataset_field` | `dataset_namespace`, `dataset_name`, `field_name`, `field_type` | `description` | Schema columns of a dataset |
+| `field` | `dataset_field` | `dataset_namespace`, `dataset_name`, `field_name`, `field_type` | `description`, `required` | Schema columns of a dataset |
 | `columnLineage` | `column_lineage` | `input_dataset_namespace`, `input_dataset_name`, `input_field`, `output_dataset_namespace`, `output_dataset_name`, `output_field`, `transformation_type`, `transformation_subtype` | `job_namespace`, `job_name`, `description` | Column-level lineage edges |
 
 #### Schema Conventions & Optional Metadata
@@ -121,6 +121,7 @@ Lineage Explorer models static lineage metadata (it does not read runtime job ru
 - **`title` & `description`** (`job`, `dataset`): When `title` is present and non-null, it is displayed as the node's primary label (falling back to `name`). `description` is shown in tooltips and the details panel.
 - **`archetype`** (`job`, `dataset`): A presentation-only badge such as `source`, `staging`, `mart`, or `ingestion`. Shown on graph nodes, in the details panel, and as a filter on `/nodes`. It does not affect graph structure.
 - **`crud`** (`job_output`): Indicates how a job modifies an output dataset: `C` (Create, green), `U` (Update, amber), or `D` (Delete, red). When absent or `NULL`, edges use the default color.
+- **`required`** (`dataset_field`): A presentation-only marker for non-nullable or mandatory columns. When the column exists and is truthy (`true`, `1`, `yes`), the column name is followed by a red asterisk (`*`) in the graph and details panel. When the column is absent or `NULL`, no marker is shown.
 - **`view`**: Models database views following OpenLineage's `symlinks` facet. Each row adds a direct `base dataset -> view dataset` edge with no job in between. A view joining or unioning multiple tables/views has one row per base dataset.
 - **`column_lineage`**: Follows the OpenLineage `columnLineage` facet, with one row per input field feeding an output field:
   - `transformation_type`: `DIRECT` or `INDIRECT`

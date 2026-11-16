@@ -12,6 +12,8 @@ export type DatasetField = {
   name: string;
   type: string | null;
   description: string | null;
+  /** True when dataset_field.required is set; false when the column is absent or null. */
+  required: boolean;
 };
 
 export type DatasetNode = {

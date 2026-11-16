@@ -11,7 +11,8 @@
 //   view           one row per table or view a  (view dataset, base dataset)
 //                  view is defined over, in the
 //                  same database
-//   dataset_field  columns of a dataset         (dataset, field name, type, description)
+//   dataset_field  columns of a dataset         (dataset, field name, type, description,
+//                                                optional required)
 //   column_lineage one row per input field of   (job, input dataset + field,
 //                  an output field                output dataset + field,
 //                                                 transformation type + subtype)
@@ -19,6 +20,9 @@
 // crud on job_output is an optional presentation-only marker for whether the job
 // creates (C), updates (U), or deletes (D) the output dataset. When the column is
 // absent the output edges are drawn in the default color.
+//
+// required on dataset_field is an optional presentation-only marker. Truthy
+// values (true, 1, yes) draw an asterisk next to the column name.
 //
 // column_lineage follows the OpenLineage columnLineage facet: each output field
 // lists the input fields it derives from, with a transformation type (DIRECT or
@@ -58,6 +62,7 @@ export const schema = {
     name: 'field_name',
     type: 'field_type',
     description: 'description',
+    required: 'required',
   },
   columnLineage: {
     table: 'column_lineage',

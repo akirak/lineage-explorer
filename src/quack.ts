@@ -188,9 +188,19 @@ function normalizeCrud(value: string | null): Crud | null {
   return crud === 'C' || crud === 'U' || crud === 'D' ? crud : null;
 }
 
-interface FieldRow extends DatasetField {
+/** Interpret the optional dataset_field.required column as a boolean. */
+function normalizeRequired(value: string | null): boolean {
+  const required = value?.trim().toLowerCase();
+  return required === 'true' || required === 't' || required === '1' || required === 'yes' || required === 'y';
+}
+
+interface FieldRow {
   dataset_namespace: string;
   dataset_name: string;
+  name: string;
+  type: string | null;
+  description: string | null;
+  required: string | null;
 }
 
 interface ColumnLineageRow {
@@ -229,6 +239,7 @@ async function loadAvailableColumns(query: QuackClient['query']): Promise<Availa
     job: await columns(s.job.table),
     dataset: await columns(s.dataset.table),
     output: await columns(s.output.table),
+    field: await columns(s.field.table),
   };
 }
 
@@ -280,6 +291,7 @@ export async function loadGraph(): Promise<Graph> {
       name: field.name,
       type: field.type ?? null,
       description: field.description ?? null,
+      required: normalizeRequired(field.required),
     });
   }
 
@@ -318,8 +330,8 @@ export async function loadGraph(): Promise<Graph> {
     const input = addDataset(row.input_namespace, row.input_dataset);
     const output = addDataset(row.output_namespace, row.output_dataset);
     // Columns referenced by lineage but missing from dataset_field still get a row.
-    addField(input, { name: row.input_field, type: null, description: null });
-    addField(output, { name: row.output_field, type: null, description: null });
+    addField(input, { name: row.input_field, type: null, description: null, required: false });
+    addField(output, { name: row.output_field, type: null, description: null, required: false });
     const job = row.job_namespace != null && row.job_name != null ? addJob(row.job_namespace, row.job_name) : null;
     if (job) {
       addEdge(input.id, job);

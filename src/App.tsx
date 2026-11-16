@@ -89,6 +89,15 @@ const transformationLabel = (e: ColumnEdge) =>
 
 const isIndirect = (e: ColumnEdge) => e.transformationType?.toUpperCase() === 'INDIRECT';
 
+function RequiredMark() {
+  return (
+    <span className="field-required" title="Required">
+      <span aria-hidden="true">*</span>
+      <span className="sr-only">Required</span>
+    </span>
+  );
+}
+
 type TableCell = string | number | null | undefined;
 type TableData = { headers: string[]; rows: TableCell[][] };
 
@@ -934,7 +943,10 @@ function Details(props: DetailsProps) {
           </Button>
         </div>
       </div>
-      <h2 className="mono">{heading}</h2>
+      <h2 className="mono">
+        {heading}
+        {isColumn && selection.field.required && <RequiredMark />}
+      </h2>
       {isColumn ? (
         <p className="muted">
           <Button className="link inline" onClick={() => onSelect(selection.dataset.id)}>
@@ -1003,12 +1015,18 @@ function Details(props: DetailsProps) {
                   <li key={f.name}>
                     {mode === 'column' ? (
                       <Button className="link" onClick={() => onSelect(colKey(selection.node.id, f.name))}>
-                        <span className="mono">{f.name}</span>
+                        <span className="field-name-wrap">
+                          <span className="mono">{f.name}</span>
+                          {f.required && <RequiredMark />}
+                        </span>
                         {f.type && <span className="muted small mono">{f.type}</span>}
                       </Button>
                     ) : (
                       <div className="item-row">
-                        <span className="mono">{f.name}</span>
+                        <span className="field-name-wrap">
+                          <span className="mono">{f.name}</span>
+                          {f.required && <RequiredMark />}
+                        </span>
                         {f.type && <span className="muted small mono">{f.type}</span>}
                       </div>
                     )}

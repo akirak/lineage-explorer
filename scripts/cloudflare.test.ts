@@ -28,6 +28,7 @@ test('Cloudflare snapshot supports every graph query without a Quack server', as
       job: new Set(tables.get(schema.job.table)),
       dataset: new Set(tables.get(schema.dataset.table)),
       output: new Set(tables.get(schema.output.table)),
+      field: new Set(tables.get(schema.field.table)),
     });
     for (const [name, sql] of Object.entries(queries)) {
       const rows = (await conn.runAndReadAll(sql)).getRowObjectsJson();

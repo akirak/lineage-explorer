@@ -503,10 +503,13 @@ button, input, select { font: inherit; color: inherit; }
 .table-field { position: relative; height: 26px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px; font-size: 12px; }
 .table-field:hover { background: var(--paper); }
 .table-field.empty { color: var(--ink-2); font-style: italic; cursor: default; }
+.field-name-wrap { display: flex; align-items: center; gap: 3px; min-width: 0; }
 .field-name { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.field-required { flex: none; color: var(--fail); font-weight: 700; line-height: 1; }
 .field-type { flex: none; font-family: var(--mono); font-size: 10.5px; color: var(--ink-2); }
 .table-field.field-selected { background: var(--ink); color: #fff; }
 .table-field.field-selected .field-type { color: #d6dcdc; }
+.table-field.field-selected .field-required { color: #ffb4a9; }
 .table-field.field-up { background: #e6eaf5; box-shadow: inset 3px 0 0 var(--up); }
 .table-field.field-down { background: #f6ebe3; box-shadow: inset 3px 0 0 var(--down); }
 

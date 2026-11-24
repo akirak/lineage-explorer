@@ -62,6 +62,7 @@ Switch to **Nodes** in the top navigation bar to browse every job and dataset in
 - Filter by search text, namespace, node type (`job` or `dataset`), or `archetype`.
 - Click **Graph →** on any row to open and select that node directly in the lineage graph.
 - Click a row to select one node, or Ctrl-click (⌘-click) rows to add and remove nodes from the selection. Selected rows are highlighted.
+- Click **Select all** to select every node matching the current filters, or **Clear selection** to reset the selection.
 - When more than one row is selected, click **View graph with the selected nodes pinned** to open the graph with every selected node pinned (and the pinned-degree controls available).
 
 ### URL Query Parameters

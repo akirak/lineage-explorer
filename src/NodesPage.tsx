@@ -117,6 +117,8 @@ export default function NodesPage() {
     });
   }, []);
 
+  const selectAll = useCallback(() => setSelectedIds(nodes.map((n) => n.id)), [nodes]);
+
   return (
     <main className="nodes-main">
       <form className="filters" onSubmit={(e) => e.preventDefault()} role="search">
@@ -175,28 +177,39 @@ export default function NodesPage() {
               {nodes.length} of {graph.nodes.length} nodes
               {selectedNodes.length > 0 && ` · ${selectedNodes.length} selected`}
             </p>
-            {selectedNodes.length > 0 && (
-              <div className="selection-actions">
-                <Button className="btn small" type="button" onClick={() => setSelectedIds([])}>
-                  <X size={14} aria-hidden="true" />
-                  Clear selection
-                </Button>
-                {selectedNodes.length > 1 && (
-                  <Link
-                    to="/"
-                    search={{
-                      pinned: selectedNodes.map((n) => n.id),
-                      selected: '',
-                      namespaces: namespace === 'all' ? [] : [namespace],
-                    }}
-                    className="btn small primary"
-                  >
-                    <Pin size={14} aria-hidden="true" />
-                    View graph with the selected nodes pinned
-                  </Link>
-                )}
-              </div>
-            )}
+            <div className="selection-actions">
+              <Button
+                className="btn small"
+                type="button"
+                onClick={selectAll}
+                disabled={nodes.length === 0 || selectedNodes.length === nodes.length}
+              >
+                <Check size={14} aria-hidden="true" />
+                Select all
+              </Button>
+              {selectedNodes.length > 0 && (
+                <>
+                  <Button className="btn small" type="button" onClick={() => setSelectedIds([])}>
+                    <X size={14} aria-hidden="true" />
+                    Clear selection
+                  </Button>
+                  {selectedNodes.length > 1 && (
+                    <Link
+                      to="/"
+                      search={{
+                        pinned: selectedNodes.map((n) => n.id),
+                        selected: '',
+                        namespaces: namespace === 'all' ? [] : [namespace],
+                      }}
+                      className="btn small primary"
+                    >
+                      <Pin size={14} aria-hidden="true" />
+                      View graph with the selected nodes pinned
+                    </Link>
+                  )}
+                </>
+              )}
+            </div>
           </div>
           <div className="table-wrap">
             <table className="nodes-table">

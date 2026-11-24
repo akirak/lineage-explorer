@@ -384,7 +384,7 @@ button, input, select { font: inherit; color: inherit; }
 
 /* ---- Pinned card ------------------------------------------------------------- */
 
-.pinned-panel { z-index: 6; width: min(300px, calc(100% - 32px)); margin: 16px; }
+.pinned-panel { z-index: 6; width: min(300px, calc(100% - 32px)); max-height: calc(100% - 32px); margin: 16px; overflow-y: auto; scrollbar-width: thin; }
 .pinned-card {
   width: 100%;
   padding: 12px 14px 14px;
@@ -398,9 +398,16 @@ button, input, select { font: inherit; color: inherit; }
 .pinned-label { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--teal); }
 .pinned-head-actions { display: flex; align-items: center; gap: 2px; flex: none; }
 .pinned-head-actions .icon-btn { width: 24px; height: 24px; padding: 0; }
-.pinned-collapsed-row { display: flex; align-items: center; gap: 8px; }
+.pinned-list { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.pinned-item { display: flex; align-items: flex-start; gap: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.pinned-item:first-child { padding-top: 0; border-top: 0; }
+.pinned-item-main { flex: 1 1 auto; min-width: 0; }
+.pinned-item-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+.pinned-item-actions .icon-btn { width: 24px; height: 24px; padding: 0; }
 .pinned-card.collapsed { padding: 8px 10px; }
-.pinned-collapsed-row .pinned-name { flex: 1 1 auto; min-width: 0; margin-top: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pinned-card.collapsed .pinned-list { gap: 2px; }
+.pinned-card.collapsed .pinned-item { padding-top: 0; border-top: 0; }
+.pinned-card.collapsed .pinned-item .pinned-name { margin-top: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pinned-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .pinned-name { margin-top: 8px; font-size: 13px; font-weight: 500; word-break: break-word; }
 .pinned-sub { word-break: break-all; }
@@ -409,7 +416,6 @@ button, input, select { font: inherit; color: inherit; }
 .pinned-degree-controls { display: flex; align-items: center; gap: 8px; }
 .pinned-degree-all { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; white-space: nowrap; }
 .pinned-filter { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--ink-2); }
-.pinned-reveal { width: 100%; margin-top: 12px; }
 .pin-toggle { justify-content: center; width: 30px; padding: 0; }
 .pin-toggle[data-pressed] { background: var(--teal); border-color: var(--teal); color: #fff; }
 .pin-toggle[data-pressed]:hover { background: var(--teal-strong); color: #fff; }

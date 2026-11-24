@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type MouseEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ComponentProps, type MouseEvent, type ReactNode } from 'react';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -235,12 +235,14 @@ function Explorer() {
   const nodeById = useMemo(() => new Map(scoped.nodes.map((n) => [n.id, n])), [scoped]);
   const datasets = useMemo(() => scoped.nodes.filter((n): n is DatasetNode => n.type === 'dataset'), [scoped]);
 
-  // The pinned card is independent of the namespace filter, so look the node up
-  // in the full graph and let the card reveal it if it is currently hidden.
-  const pinnedNode = useMemo(
-    () => (pinned && graph ? graph.nodes.find((n) => n.id === pinned) ?? null : null),
-    [pinned, graph],
-  );
+  // The pinned card is independent of the namespace filter, so look the nodes
+  // up in the full graph and let the card reveal one if it is currently hidden.
+  const pinnedNodes = useMemo(() => {
+    if (!graph || pinned.length === 0) return [];
+    const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+    return pinned.map((id) => byId.get(id)).filter((n): n is LineageNode => n != null);
+  }, [pinned, graph]);
+  const pinnedSet = useMemo(() => new Set(pinned), [pinned]);
 
   // ---- Table lineage -------------------------------------------------------
 
@@ -305,49 +307,65 @@ function Explorer() {
 
   const lineage = useMemo(() => new Set([...seeds, ...upstream, ...downstream]), [seeds, upstream, downstream]);
 
-  // The degree filter is measured from the pinned node, not the current selection.
-  const pinnedSeeds = useMemo<string[]>(() => {
-    if (!pinnedNode || !nodeById.has(pinnedNode.id)) return [];
-    if (mode === 'table') return [pinnedNode.id];
-    if (pinnedNode.type === 'dataset') {
-      return pinnedNode.fields.map((f) => colKey(pinnedNode.id, f.name));
-    }
-    // Jobs are not drawn in column mode; start from the columns the job
-    // touches, falling back to the fields of its directly connected datasets.
-    const touched = scoped.columnEdges.filter((e) => e.job === pinnedNode.id);
-    if (touched.length > 0) {
-      return [
-        ...new Set(
-          touched.flatMap((e) => [colKey(e.source, e.sourceField), colKey(e.target, e.targetField)]),
-        ),
-      ];
-    }
-    const connected = new Set([
-      ...(tableAdj.up.get(pinnedNode.id) || []),
-      ...(tableAdj.down.get(pinnedNode.id) || []),
-    ]);
-    return datasets
-      .filter((d) => connected.has(d.id))
-      .flatMap((d) => d.fields.map((f) => colKey(d.id, f.name)));
-  }, [pinnedNode, nodeById, mode, scoped.columnEdges, tableAdj, datasets]);
+  // The degree filter is measured from every pinned node, not the current selection.
+  const pinnedGroups = useMemo<{ node: LineageNode; seeds: string[] }[]>(() => {
+    if (!graph || pinnedNodes.length === 0) return [];
+    return pinnedNodes.flatMap((node) => {
+      if (!nodeById.has(node.id)) return [];
+      if (mode === 'table') return [{ node, seeds: [node.id] }];
+      if (node.type === 'dataset') {
+        return [{ node, seeds: node.fields.map((f) => colKey(node.id, f.name)) }];
+      }
+      // Jobs are not drawn in column mode; start from the columns the job
+      // touches, falling back to the fields of its directly connected datasets.
+      const touched = scoped.columnEdges.filter((e) => e.job === node.id);
+      if (touched.length > 0) {
+        return [{
+          node,
+          seeds: [
+            ...new Set(
+              touched.flatMap((e) => [colKey(e.source, e.sourceField), colKey(e.target, e.targetField)]),
+            ),
+          ],
+        }];
+      }
+      const connected = new Set([
+        ...(tableAdj.up.get(node.id) || []),
+        ...(tableAdj.down.get(node.id) || []),
+      ]);
+      return [{
+        node,
+        seeds: datasets
+          .filter((d) => connected.has(d.id))
+          .flatMap((d) => d.fields.map((f) => colKey(d.id, f.name))),
+      }];
+    });
+  }, [graph, pinnedNodes, nodeById, mode, scoped.columnEdges, tableAdj, datasets]);
+
+  const pinnedSeeds = useMemo(
+    () => [...new Set(pinnedGroups.flatMap((group) => group.seeds))],
+    [pinnedGroups],
+  );
 
   const pinnedLineage = useMemo<Set<string> | null>(() => {
     // A direction filter limits the graph even when the degree limit is off.
     if ((degreeLimit === null && direction === 'all') || pinnedSeeds.length === 0) return null;
     const adj = mode === 'table' ? tableAdj : columnAdj;
-    // Job seeds are already one hop away from the pinned job.
-    const depth =
-      degreeLimit === null
-        ? Infinity
-        : mode === 'column' && pinnedNode?.type === 'job'
-          ? Math.max(0, degreeLimit - 1)
-          : degreeLimit;
-    return new Set([
-      ...pinnedSeeds,
-      ...(direction !== 'downstream' ? traverse(pinnedSeeds, adj.up, depth) : []),
-      ...(direction !== 'upstream' ? traverse(pinnedSeeds, adj.down, depth) : []),
-    ]);
-  }, [pinnedSeeds, pinnedNode, mode, tableAdj, columnAdj, degreeLimit, direction]);
+    const visible = new Set<string>();
+    for (const { node, seeds } of pinnedGroups) {
+      // Job seeds are already one hop away from the pinned job.
+      const depth =
+        degreeLimit === null
+          ? Infinity
+          : mode === 'column' && node.type === 'job'
+            ? Math.max(0, degreeLimit - 1)
+            : degreeLimit;
+      seeds.forEach((id) => visible.add(id));
+      if (direction !== 'downstream') traverse(seeds, adj.up, depth).forEach((id) => visible.add(id));
+      if (direction !== 'upstream') traverse(seeds, adj.down, depth).forEach((id) => visible.add(id));
+    }
+    return visible;
+  }, [pinnedGroups, pinnedSeeds, mode, tableAdj, columnAdj, degreeLimit, direction]);
 
   const roleOf = useCallback(
     (id: string): Role => {
@@ -368,11 +386,10 @@ function Explorer() {
   const isolating = isolate && hasSelection;
   const filtering = isolating || pinnedLineage !== null;
   const visibleLineage = isolating ? lineage : pinnedLineage;
-  const visibleDatasetId = isolating
-    ? selectedDatasetId
-    : pinnedNode?.type === 'dataset'
-      ? pinnedNode.id
-      : null;
+  const visibleDatasetIds = useMemo(() => {
+    if (isolating) return new Set(selectedDatasetId ? [selectedDatasetId] : []);
+    return new Set(pinnedNodes.filter((n) => n.type === 'dataset').map((n) => n.id));
+  }, [isolating, selectedDatasetId, pinnedNodes]);
 
   const tableVisible = useMemo(() => {
     if (!filtering || !visibleLineage) return { nodes: scoped.nodes, edges: scoped.edges };
@@ -387,12 +404,12 @@ function Explorer() {
     // Keep only datasets on the lineage, and only their lineage columns.
     const kept = datasets
       .map((d) => ({ ...d, fields: d.fields.filter((f) => visibleLineage.has(colKey(d.id, f.name))) }))
-      .filter((d) => d.id === visibleDatasetId || d.fields.length > 0);
+      .filter((d) => visibleDatasetIds.has(d.id) || d.fields.length > 0);
     return {
       datasets: kept,
       links: colLinks.filter((l) => visibleLineage.has(l.source) && visibleLineage.has(l.target)),
     };
-  }, [datasets, colLinks, filtering, visibleLineage, visibleDatasetId]);
+  }, [datasets, colLinks, filtering, visibleLineage, visibleDatasetIds]);
 
   const positioned = useMemo<Node[]>(() => {
     if (mode === 'table') {
@@ -435,7 +452,7 @@ function Explorer() {
       positioned.map((n) => {
         if (mode === 'table') {
           const role = roleOf(n.id);
-          return { ...n, data: { ...n.data, role, dim: hasSelection && role === 'none', pinned: pinned === n.id } };
+          return { ...n, data: { ...n.data, role, dim: hasSelection && role === 'none', pinned: pinnedSet.has(n.id) } };
         }
         const d = n.data as TableFlowNode['data'];
         const fieldRoles: Record<string, Role> = {};
@@ -448,9 +465,9 @@ function Explorer() {
           down ||= r === 'down';
         }
         const role: Role = n.id === selectedDatasetId ? 'selected' : up ? 'up' : down ? 'down' : 'none';
-        return { ...n, data: { ...d, fieldRoles, role, dim: hasSelection && role === 'none', pinned: pinned === n.id } };
+        return { ...n, data: { ...d, fieldRoles, role, dim: hasSelection && role === 'none', pinned: pinnedSet.has(n.id) } };
       }),
-    [positioned, mode, roleOf, hasSelection, selectedDatasetId, pinned],
+    [positioned, mode, roleOf, hasSelection, selectedDatasetId, pinnedSet],
   );
 
   const rfEdges = useMemo<Edge[]>(() => {
@@ -503,7 +520,8 @@ function Explorer() {
     setQuery('');
     const target = graph?.nodes.find((n) => n.id === id);
     const nextMode: Mode = mode === 'column' && (target ? target.type === 'job' : id.startsWith('job:')) ? 'table' : mode;
-    // A pinned node may have been hidden by the namespace filter; reveal it too.
+    // A node selected from search may have been hidden by the namespace
+    // filter; reveal it too.
     const revealedNamespaces =
       target && namespaces.length > 0 && !namespaces.includes(target.namespace)
         ? [...namespaces, target.namespace]
@@ -520,9 +538,22 @@ function Explorer() {
     });
   };
 
-  const togglePin = (id: string) => updateSearch((prev) => ({ pinned: prev.pinned === id ? '' : id }));
+  const togglePin = useCallback(
+    (id: string) =>
+      updateSearch((prev) => ({
+        pinned: prev.pinned.includes(id) ? prev.pinned.filter((pinnedId) => pinnedId !== id) : [...prev.pinned, id],
+      })),
+    [updateSearch],
+  );
 
   const onNodeClick = (event: MouseEvent, n: Node) => {
+    // Ctrl/Cmd-click toggles the pin without changing the selection, so several
+    // nodes can be pinned in a row.
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      togglePin(n.id);
+      return;
+    }
     const field = (event.target as HTMLElement).closest('[data-field]')?.getAttribute('data-field');
     select(mode === 'column' && field != null ? colKey(n.id, field) : n.id);
   };
@@ -625,17 +656,17 @@ function Explorer() {
           >
             <Background gap={24} size={1} color="#d6dcdc" />
             <Controls showInteractive={false} showFitView={false} />
-            {pinnedNode && (
+            {pinnedNodes.length > 0 && (
               <Panel position="top-left" className="pinned-panel">
                 <PinnedPanel
-                  node={pinnedNode}
-                  selected={selectedId === pinnedNode.id}
+                  nodes={pinnedNodes}
+                  selectedId={selectedId}
                   degree={degree}
                   onDegreeChange={(next) => updateSearch({ degree: next })}
                   direction={direction}
                   onDirectionChange={(next) => updateSearch({ direction: next })}
-                  onReveal={() => focusNode(pinnedNode.id)}
-                  onUnpin={() => updateSearch({ pinned: '' })}
+                  onReveal={focusNode}
+                  onUnpin={togglePin}
                 />
               </Panel>
             )}
@@ -680,7 +711,7 @@ function Explorer() {
               upstreamCount={upstream.size}
               downstreamCount={downstream.size}
               isolate={isolate}
-              pinnedId={pinned}
+              pinnedIds={pinned}
               onTogglePin={togglePin}
               onToggleIsolate={() => updateSearch((prev) => ({ isolate: !prev.isolate }))}
               onSelect={focusNode}
@@ -701,7 +732,7 @@ interface DetailsProps {
   upstreamCount: number;
   downstreamCount: number;
   isolate: boolean;
-  pinnedId: string;
+  pinnedIds: string[];
   onTogglePin: (id: string) => void;
   onToggleIsolate: () => void;
   onSelect: (id: string) => void;
@@ -726,8 +757,8 @@ function NodeLink({ node, onSelect }: { node: LineageNode | undefined; onSelect:
 }
 
 function PinnedPanel({
-  node,
-  selected,
+  nodes,
+  selectedId,
   degree,
   onDegreeChange,
   direction,
@@ -735,19 +766,19 @@ function PinnedPanel({
   onReveal,
   onUnpin,
 }: {
-  node: LineageNode;
-  selected: boolean;
+  nodes: LineageNode[];
+  selectedId: string | null;
   degree: LineageDegree;
   onDegreeChange: (degree: LineageDegree) => void;
   direction: LineageDirection;
   onDirectionChange: (direction: LineageDirection) => void;
-  onReveal: () => void;
-  onUnpin: () => void;
+  onReveal: (id: string) => void;
+  onUnpin: (id: string) => void;
 }) {
   const [collapsed, setCollapsed] = useState(true);
   const [lastDegree, setLastDegree] = useState<LineageDegree>(degree === 'all' ? '1' : degree);
-  const title = node.title ?? node.name;
-  const revealLabel = selected ? 'Center in graph' : 'Bring into view';
+  const degreeLabelId = useId();
+  const collapseLabel = collapsed ? 'Expand pinned card' : 'Collapse pinned card';
 
   useEffect(() => {
     if (degree !== 'all') setLastDegree(degree);
@@ -762,67 +793,73 @@ function PinnedPanel({
     <div
       className={`pinned-card${collapsed ? ' collapsed' : ''}`}
       role="region"
-      aria-label={`Pinned ${node.type}: ${node.name}`}
+      aria-label={`Pinned nodes (${nodes.length})`}
     >
-      {collapsed ? (
-        <div className="pinned-collapsed-row">
-          <div className="pinned-name mono" title={node.name}>
-            {title}
-          </div>
-          <div className="pinned-head-actions">
-            <Button className="icon-btn" onClick={onReveal} aria-label={revealLabel} title={revealLabel}>
-              <LocateFixed size={15} aria-hidden="true" />
-            </Button>
-            <Button className="icon-btn" onClick={onUnpin} aria-label="Unpin node" title="Unpin node">
-              <PinOff size={15} aria-hidden="true" />
-            </Button>
-            <Button
-              className="icon-btn"
-              onClick={() => setCollapsed(false)}
-              aria-label="Expand pinned card"
-              aria-expanded="false"
-              title="Expand pinned card"
-            >
-              <ChevronDown size={16} aria-hidden="true" />
-            </Button>
-          </div>
+      <div className="pinned-head">
+        <span className="pinned-label">
+          <Pin size={13} aria-hidden="true" />
+          Pinned{nodes.length > 1 ? ` (${nodes.length})` : ''}
+        </span>
+        <div className="pinned-head-actions">
+          <Button
+            className="icon-btn"
+            onClick={() => setCollapsed((prev) => !prev)}
+            aria-label={collapseLabel}
+            aria-expanded={!collapsed}
+            title={collapseLabel}
+          >
+            {collapsed ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronUp size={16} aria-hidden="true" />}
+          </Button>
         </div>
-      ) : (
+      </div>
+      <ul className="pinned-list">
+        {nodes.map((node) => {
+          const title = node.title ?? node.name;
+          const revealLabel = selectedId === node.id ? 'Center in graph' : 'Bring into view';
+          return (
+            <li key={node.id} className="pinned-item">
+              <div className="pinned-item-main">
+                {!collapsed && (
+                  <div className="pinned-badges">
+                    <span className={`kind kind-${node.type}`}>{node.type}</span>
+                    {node.archetype && <span className="archetype-badge static">{node.archetype}</span>}
+                  </div>
+                )}
+                <div className="pinned-name mono" title={node.name}>
+                  {title}
+                </div>
+                {!collapsed && node.title && node.title !== node.name && (
+                  <div className="pinned-sub mono muted small">{node.name}</div>
+                )}
+                {!collapsed && <div className="pinned-sub muted small">{node.namespace}</div>}
+                {!collapsed && node.description && <p className="pinned-desc">{node.description}</p>}
+              </div>
+              <div className="pinned-item-actions">
+                <Button
+                  className="icon-btn"
+                  onClick={() => onReveal(node.id)}
+                  aria-label={`${revealLabel}: ${title}`}
+                  title={revealLabel}
+                >
+                  <LocateFixed size={15} aria-hidden="true" />
+                </Button>
+                <Button
+                  className="icon-btn"
+                  onClick={() => onUnpin(node.id)}
+                  aria-label={`Unpin ${title}`}
+                  title="Unpin node"
+                >
+                  <PinOff size={15} aria-hidden="true" />
+                </Button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      {!collapsed && (
         <>
-          <div className="pinned-head">
-            <span className="pinned-label">
-              <Pin size={13} aria-hidden="true" />
-              Pinned
-            </span>
-            <div className="pinned-head-actions">
-              <Button className="icon-btn" onClick={onUnpin} aria-label="Unpin node" title="Unpin node">
-                <PinOff size={15} aria-hidden="true" />
-              </Button>
-              <Button
-                className="icon-btn"
-                onClick={() => setCollapsed(true)}
-                aria-label="Collapse pinned card"
-                aria-expanded="true"
-                title="Collapse pinned card"
-              >
-                <ChevronUp size={16} aria-hidden="true" />
-              </Button>
-            </div>
-          </div>
-          <div className="pinned-badges">
-            <span className={`kind kind-${node.type}`}>{node.type}</span>
-            {node.archetype && <span className="archetype-badge static">{node.archetype}</span>}
-          </div>
-          <div className="pinned-name mono" title={node.name}>
-            {title}
-          </div>
-          {node.title && node.title !== node.name && (
-            <div className="pinned-sub mono muted small">{node.name}</div>
-          )}
-          <div className="pinned-sub muted small">{node.namespace}</div>
-          {node.description && <p className="pinned-desc">{node.description}</p>}
           <div className="pinned-degree">
-            <span id="pinned-degree-label">Degree</span>
+            <span id={degreeLabelId}>Degree</span>
             <div className="pinned-degree-controls">
               <Select.Root
                 value={degree === 'all' ? lastDegree : degree}
@@ -831,8 +868,8 @@ function PinnedPanel({
               >
                 <Select.Trigger
                   className="select-trigger compact"
-                  aria-labelledby="pinned-degree-label"
-                  title="Number of hops shown around the pinned node"
+                  aria-labelledby={degreeLabelId}
+                  title="Number of hops shown around each pinned node"
                 >
                   <Select.Value />
                   <Select.Icon className="select-icon">
@@ -874,7 +911,7 @@ function PinnedPanel({
             <span>Show</span>
             <ToggleGroup
               className="segmented compact"
-              aria-label="Direction from the pinned node"
+              aria-label="Direction from the pinned nodes"
               value={[direction]}
               onValueChange={(values) => {
                 const next = values[0] as LineageDirection | undefined;
@@ -888,10 +925,6 @@ function PinnedPanel({
               ))}
             </ToggleGroup>
           </div>
-          <Button className="btn small pinned-reveal" onClick={onReveal}>
-            <LocateFixed size={15} aria-hidden="true" />
-            {revealLabel}
-          </Button>
         </>
       )}
     </div>
@@ -907,7 +940,7 @@ function Details(props: DetailsProps) {
     upstreamCount,
     downstreamCount,
     isolate,
-    pinnedId,
+    pinnedIds,
     onTogglePin,
     onToggleIsolate,
     onSelect,
@@ -917,7 +950,7 @@ function Details(props: DetailsProps) {
   const kind = isColumn ? 'column' : selection.node.type;
   const heading = isColumn ? selection.field.name : selection.node.title ?? selection.node.name;
   const unit = mode === 'column' ? ' columns' : '';
-  const isPinned = !isColumn && pinnedId === selection.node.id;
+  const isPinned = !isColumn && pinnedIds.includes(selection.node.id);
 
   return (
     <div className="details">

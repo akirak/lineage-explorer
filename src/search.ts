@@ -2,10 +2,10 @@ import type { SearchSchemaInput } from '@tanstack/react-router';
 
 export type Mode = 'table' | 'column';
 
-/** Maximum lineage depth shown around the pinned node; 'all' disables the limit. */
+/** Maximum lineage depth shown around the pinned nodes; 'all' disables the limit. */
 export type LineageDegree = 'all' | '1' | '2' | '3' | '4';
 
-/** Which side of the pinned node the degree filter covers. */
+/** Which side of the pinned nodes the degree filter covers. */
 export type LineageDirection = 'all' | 'upstream' | 'downstream';
 
 /** UI state kept in the URL query string so a view can be shared or reloaded. */
@@ -13,14 +13,14 @@ export type ExplorerSearch = {
   mode: Mode;
   /** Namespaces to show; empty means all namespaces. */
   namespaces: string[];
-  /** Maximum number of upstream/downstream hops to show around the pinned node. */
+  /** Maximum number of upstream/downstream hops to show around each pinned node. */
   degree: LineageDegree;
-  /** Restrict the pinned node's visible lineage to upstream or downstream nodes. */
+  /** Restrict each pinned node's visible lineage to upstream or downstream nodes. */
   direction: LineageDirection;
   /** Selected node id, or a column key (`<datasetId>\u0001<field>`); empty when nothing is selected. */
   selected: string;
-  /** Node id pinned to the graph viewport; empty when nothing is pinned. */
-  pinned: string;
+  /** Node ids pinned to the graph viewport; empty when nothing is pinned. */
+  pinned: string[];
   isolate: boolean;
 };
 
@@ -36,7 +36,7 @@ export const defaultSearch: ExplorerSearch = {
   degree: 'all',
   direction: 'all',
   selected: '',
-  pinned: '',
+  pinned: [],
   isolate: false,
 };
 
@@ -50,6 +50,13 @@ function parseNamespaces(search: ExplorerSearchInput): string[] {
   return typeof legacy === 'string' && legacy !== '' && legacy !== 'all' ? [legacy] : [];
 }
 
+function parsePinned(search: ExplorerSearchInput): string[] {
+  const raw = search.pinned;
+  const values = Array.isArray(raw) ? raw : raw != null ? [raw] : [];
+  // Older links stored a single node id as a plain string, so accept both forms.
+  return [...new Set(values.filter((id): id is string => typeof id === 'string' && id !== ''))];
+}
+
 export function parseSearch(search: ExplorerSearchInput): ExplorerSearch {
   const degree = search.degree;
   const direction = search.direction;
@@ -59,7 +66,7 @@ export function parseSearch(search: ExplorerSearchInput): ExplorerSearch {
     degree: degree === '1' || degree === '2' || degree === '3' || degree === '4' ? degree : 'all',
     direction: direction === 'upstream' || direction === 'downstream' ? direction : 'all',
     selected: typeof search.selected === 'string' ? search.selected : '',
-    pinned: typeof search.pinned === 'string' ? search.pinned : '',
+    pinned: parsePinned(search),
     isolate: search.isolate === true || String(search.isolate) === 'true',
   };
 }

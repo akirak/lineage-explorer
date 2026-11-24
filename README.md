@@ -50,9 +50,9 @@ When `pnpm dev` starts, the `rebuild-db` Vite plugin:
   - In **Table mode**, database views are drawn as dashed `dataset -> dataset` edges (with no job in between). Job output edges with CRUD metadata are colored green (`C` – Create), amber (`U` – Update), or red (`D` – Delete).
   - In **Column mode**, solid edges represent `DIRECT` transformations (identity, expressions, aggregations) and dashed edges represent `INDIRECT` transformations (joins, filters, groupings).
 - **Isolating a Subgraph**: Enable **Show only this lineage** in the details panel to hide unrelated nodes (and unrelated columns in column mode) and re-layout the graph.
-- **Pinning & Hop Filtering**: Click **Pin** in the details panel to anchor a card for the selected node in the viewport while you pan, zoom, or inspect other nodes:
-  - Click **Bring into view** on the pinned card to re-select and center that node (automatically adding its namespace to the active filter if hidden).
-  - Expand the pinned card to restrict the visible graph by **Degree** (`1` to `4` hops, or `All`) and **Show** direction (**All**, **Upstream** only, or **Downstream** only) in both table and column modes.
+- **Pinning & Hop Filtering**: Click **Pin** in the details panel to add the selected node to a pinned card in the viewport while you pan, zoom, or inspect other nodes. Ctrl-click (or ⌘-click) any node to pin or unpin it directly; the card lists every pinned node and filters to the union of their lineages:
+  - Click **Bring into view** next to a pinned node to re-select and center it (automatically adding its namespace to the active filter if hidden).
+  - Expand the pinned card to restrict the visible graph by **Degree** (`1` to `4` hops, or `All`) and **Show** direction (**All**, **Upstream** only, or **Downstream** only) in both table and column modes. The controls apply to every pinned node.
 - **Searching & Filtering**: Search by job, dataset, namespace, or column name; filter the graph to one or more namespaces; or click **Refresh the database** in the header to re-run queries against the database.
 - **Side Details Panel**: Displays descriptions, archetypes, a job's inputs and outputs, a dataset's producers, consumers, views, and schema fields, or a column's upstream/downstream transformations and producing jobs.
 
@@ -73,9 +73,9 @@ All view state is synchronized with the URL (default values are omitted for clea
 | `mode` | `table` \| `column` | `table` | Active lineage view mode |
 | `namespaces` | JSON array of strings | `[]` (all) | Filter graph to specific namespaces (e.g. `namespaces=["warehouse"]`) |
 | `selected` | Node or column ID | `""` | Currently selected job, dataset, or column |
-| `pinned` | Node ID | `""` | Job or dataset pinned to the viewport |
-| `degree` | `1` \| `2` \| `3` \| `4` \| `all` | `all` | Max upstream/downstream hops around the pinned node |
-| `direction` | `all` \| `upstream` \| `downstream` | `all` | Restrict lineage around the pinned node by direction |
+| `pinned` | JSON array of node IDs | `[]` | Jobs or datasets pinned to the viewport |
+| `degree` | `1` \| `2` \| `3` \| `4` \| `all` | `all` | Max upstream/downstream hops around each pinned node |
+| `direction` | `all` \| `upstream` \| `downstream` | `all` | Restrict lineage around the pinned nodes by direction |
 | `isolate` | `true` \| `false` | `false` | Hide nodes/columns outside the selected item's lineage |
 
 #### Nodes Table (`/nodes`)

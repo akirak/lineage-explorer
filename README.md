@@ -7,7 +7,7 @@ An interactive web application for exploring [OpenLineage] metadata stored in [D
 - **Table & Column Lineage**: Switch seamlessly between high-level dataset/job flows and fine-grained column-to-column transformations.
 - **Interactive Graph Exploration**: Click any node or column to highlight its upstream (blue) and downstream (copper) lineage, isolate connected subgraphs, or pin a node to filter by hop count (`1–4` or `all`) and direction (`upstream` / `downstream`).
 - **Views & CRUD Indicators**: Visualize database views as direct dataset-to-dataset edges and color-code job outputs by operation (`Create`, `Update`, `Delete`).
-- **Searchable Node Catalog (`/nodes`)**: Browse and filter all jobs and datasets by keyword, namespace, type, or archetype, and jump straight to any node in the graph.
+- **Searchable Node Catalog (`/nodes`)**: Browse and filter all jobs and datasets by keyword, namespace, type, or archetype, select several rows with Ctrl-click (⌘-click), and open them all pinned in the graph.
 - **Shareable URL State**: Every active view, filter, selection, and pinned configuration is stored in the URL query string for bookmarking and sharing.
 - **Two Execution Modes**:
   - **Local Development / Live Server**: Queries a local or remote DuckDB process over DuckDB's [Quack remote protocol] with live reload whenever SQL files under `data/` change.
@@ -61,6 +61,8 @@ When `pnpm dev` starts, the `rebuild-db` Vite plugin:
 Switch to **Nodes** in the top navigation bar to browse every job and dataset in a table:
 - Filter by search text, namespace, node type (`job` or `dataset`), or `archetype`.
 - Click **Graph →** on any row to open and select that node directly in the lineage graph.
+- Click a row to select one node, or Ctrl-click (⌘-click) rows to add and remove nodes from the selection. Selected rows are highlighted.
+- When more than one row is selected, click **View graph with the selected nodes pinned** to open the graph with every selected node pinned (and the pinned-degree controls available).
 
 ### URL Query Parameters
 

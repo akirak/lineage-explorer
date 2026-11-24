@@ -1,10 +1,10 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo, useState, type MouseEvent } from 'react';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { Button } from '@base-ui-components/react/button';
 import { Field } from '@base-ui-components/react/field';
 import { Input } from '@base-ui-components/react/input';
 import { Select } from '@base-ui-components/react/select';
-import { ArrowRight, Check, ChevronDown, X } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown, Pin, X } from 'lucide-react';
 import type { LineageNode } from '../shared/types.ts';
 import type { NodesSearch } from './search.ts';
 import { useGraph } from './useGraph.ts';
@@ -101,6 +101,22 @@ export default function NodesPage() {
 
   const hasFilters = q !== '' || namespace !== 'all' || type !== 'all' || archetype !== 'all';
 
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  // Only count selections that match the current filters; hidden rows should not
+  // end up pinned by a button the user cannot reconcile with the table.
+  const selectedNodes = useMemo(() => nodes.filter((n) => selectedSet.has(n.id)), [nodes, selectedSet]);
+
+  const selectRow = useCallback((event: MouseEvent<HTMLTableRowElement>, id: string) => {
+    // Let links, buttons, and other controls inside the row handle their own clicks.
+    if ((event.target as HTMLElement).closest('a, button, input, select, textarea')) return;
+    const additive = event.ctrlKey || event.metaKey;
+    setSelectedIds((prev) => {
+      if (!additive) return prev.length === 1 && prev[0] === id ? [] : [id];
+      return prev.includes(id) ? prev.filter((selectedId) => selectedId !== id) : [...prev, id];
+    });
+  }, []);
+
   return (
     <main className="nodes-main">
       <form className="filters" onSubmit={(e) => e.preventDefault()} role="search">
@@ -154,9 +170,34 @@ export default function NodesPage() {
       {!error && loading && <p className="muted nodes-status">Loading…</p>}
       {!error && !loading && graph && (
         <>
-          <p className="muted nodes-status">
-            {nodes.length} of {graph.nodes.length} nodes
-          </p>
+          <div className="nodes-toolbar">
+            <p className="muted nodes-status">
+              {nodes.length} of {graph.nodes.length} nodes
+              {selectedNodes.length > 0 && ` · ${selectedNodes.length} selected`}
+            </p>
+            {selectedNodes.length > 0 && (
+              <div className="selection-actions">
+                <Button className="btn small" type="button" onClick={() => setSelectedIds([])}>
+                  <X size={14} aria-hidden="true" />
+                  Clear selection
+                </Button>
+                {selectedNodes.length > 1 && (
+                  <Link
+                    to="/"
+                    search={{
+                      pinned: selectedNodes.map((n) => n.id),
+                      selected: '',
+                      namespaces: namespace === 'all' ? [] : [namespace],
+                    }}
+                    className="btn small primary"
+                  >
+                    <Pin size={14} aria-hidden="true" />
+                    View graph with the selected nodes pinned
+                  </Link>
+                )}
+              </div>
+            )}
+          </div>
           <div className="table-wrap">
             <table className="nodes-table">
               <thead>
@@ -173,7 +214,12 @@ export default function NodesPage() {
               </thead>
               <tbody>
                 {nodes.map((n) => (
-                  <tr key={n.id}>
+                  <tr
+                    key={n.id}
+                    className={selectedSet.has(n.id) ? 'selectable selected' : 'selectable'}
+                    aria-selected={selectedSet.has(n.id)}
+                    onClick={(event) => selectRow(event, n.id)}
+                  >
                     <td>
                       <span className={`kind kind-${n.type}`}>{n.type}</span>
                     </td>

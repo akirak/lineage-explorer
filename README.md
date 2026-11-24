@@ -7,7 +7,7 @@ An interactive web application for exploring [OpenLineage] metadata stored in [D
 - **Table & Column Lineage**: Switch seamlessly between high-level dataset/job flows and fine-grained column-to-column transformations.
 - **Interactive Graph Exploration**: Click any node or column to highlight its upstream (blue) and downstream (copper) lineage, isolate connected subgraphs, or pin a node to filter by hop count (`1–4` or `all`) and direction (`upstream` / `downstream`).
 - **Views & CRUD Indicators**: Visualize database views as direct dataset-to-dataset edges and color-code job outputs by operation (`Create`, `Update`, `Delete`).
-- **Searchable Node Catalog (`/nodes`)**: Browse and filter all jobs and datasets by keyword, namespace, type, or archetype, and jump straight to any node in the graph. The namespace filter is shared with the graph: switching views keeps the same set of namespaces selected.
+- **Searchable Node Catalog (`/nodes`)**: Browse and filter all jobs and datasets by keyword, namespace, type, or archetype, and jump straight to any node in the graph.
 - **Shareable URL State**: Every active view, filter, selection, and pinned configuration is stored in the URL query string for bookmarking and sharing.
 - **Two Execution Modes**:
   - **Local Development / Live Server**: Queries a local or remote DuckDB process over DuckDB's [Quack remote protocol] with live reload whenever SQL files under `data/` change.
@@ -59,27 +59,19 @@ When `pnpm dev` starts, the `rebuild-db` Vite plugin:
 ### Nodes Directory (`/nodes`)
 
 Switch to **Nodes** in the top navigation bar to browse every job and dataset in a table:
-- Filter by search text, one or more namespaces, node type (`job` or `dataset`), or `archetype`.
-- The namespace selection is shared with the graph view, so switching between **Graph** and **Nodes** keeps the same nodes filtered out.
-- Click **Graph →** on any row to open and select that node directly in the lineage graph, preserving the namespace filter.
+- Filter by search text, namespace, node type (`job` or `dataset`), or `archetype`.
+- Click **Graph →** on any row to open and select that node directly in the lineage graph.
 
 ### URL Query Parameters
 
 All view state is synchronized with the URL (default values are omitted for clean URLs):
-
-#### Common Parameters
-
-The Graph and Nodes views share the namespace filter. Switching between views carries it over, so the same nodes stay filtered out.
-
-| Parameter | Values | Default | Description |
-|---|---|---|---|
-| `namespaces` | JSON array of strings | `[]` (all) | Filter to specific namespaces (e.g. `namespaces=["warehouse"]`) |
 
 #### Graph (`/`)
 
 | Parameter | Values | Default | Description |
 |---|---|---|---|
 | `mode` | `table` \| `column` | `table` | Active lineage view mode |
+| `namespaces` | JSON array of strings | `[]` (all) | Filter graph to specific namespaces (e.g. `namespaces=["warehouse"]`) |
 | `selected` | Node or column ID | `""` | Currently selected job, dataset, or column |
 | `pinned` | JSON array of node IDs | `[]` | Jobs or datasets pinned to the viewport |
 | `degree` | `1` \| `2` \| `3` \| `4` \| `all` | `all` | Max upstream/downstream hops around each pinned node |
@@ -91,6 +83,7 @@ The Graph and Nodes views share the namespace filter. Switching between views ca
 | Parameter | Values | Default | Description |
 |---|---|---|---|
 | `q` | string | `""` | Free-text search filter |
+| `namespace` | namespace string \| `all` | `all` | Filter by namespace |
 | `type` | `all` \| `job` \| `dataset` | `all` | Filter by entity type |
 | `archetype` | archetype string \| `all` | `all` | Filter by presentation archetype |
 

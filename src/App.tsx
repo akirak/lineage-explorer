@@ -11,7 +11,7 @@ import {
   type Edge,
   type Node,
 } from '@xyflow/react';
-import { useNavigate, useSearch } from '@tanstack/react-router';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { Button } from '@base-ui-components/react/button';
 import { Toggle } from '@base-ui-components/react/toggle';
 import { ToggleGroup } from '@base-ui-components/react/toggle-group';
@@ -38,6 +38,14 @@ import {
 } from 'lucide-react';
 import type { ColumnEdge, Crud, DatasetField, DatasetNode, Graph, LineageEdge, LineageNode } from '../shared/types.ts';
 import type { ExplorerSearch, LineageDegree, LineageDirection, Mode } from './search.ts';
+import {
+  countFilters,
+  describeFilter,
+  hasActiveFilters,
+  nodeMatchesFilter,
+  nodeMatchesFilters,
+} from './filters.ts';
+import { createFilterSet, updateFilterSet, useFilterSets } from './filterStore.ts';
 import { useGraph } from './useGraph.ts';
 import { adjacency, layoutNodes, tableHeight, traverse, NODE_W, NODE_H, TABLE_W } from './layout.ts';
 import { inHandle, nodeTypes, outHandle, type LineageFlowNode, type Role, type TableFlowNode } from './nodes.tsx';
@@ -173,10 +181,19 @@ function edgeStyle(
 
 function Explorer() {
   const { setCenter, fitView } = useReactFlow();
-  const { mode, namespaces, degree, direction, selected, pinned, isolate } = useSearch({ from: '/' });
+  const { mode, degree, direction, selected, pinned, isolate, filterSet } = useSearch({
+    from: '/',
+  });
   const navigate = useNavigate({ from: '/' });
   const pendingCenter = useRef<string | null>(null);
   const { graph, error, loading, reload } = useGraph();
+  const savedFilterSets = useFilterSets();
+  const activeSet = useMemo(
+    () => savedFilterSets.find((set) => set.id === filterSet) ?? null,
+    [savedFilterSets, filterSet],
+  );
+  const filters = useMemo(() => activeSet?.filters ?? [], [activeSet]);
+  const namespaces = useMemo(() => activeSet?.namespaces ?? [], [activeSet]);
 
   // Re-run the queries against the Quack server; in dev the rebuild-db
   // plugin re-points it at the newest parquet build after every rebuild.
@@ -198,6 +215,15 @@ function Explorer() {
   );
 
   const select = useCallback((id: string | null) => updateSearch({ selected: id ?? '' }), [updateSearch]);
+
+  const changeNamespaces = (next: string[]) => {
+    if (activeSet) {
+      updateFilterSet(activeSet.id, { namespaces: next });
+    } else if (next.length > 0) {
+      const set = createFilterSet('Untitled filter set', next, []);
+      updateSearch({ filterSet: set.id });
+    }
+  };
 
   const setMode = (next: Mode) => {
     if (next === mode) return;
@@ -221,16 +247,30 @@ function Explorer() {
 
   const scoped = useMemo<Graph>(() => {
     if (!graph) return { nodes: [], edges: [], columnEdges: [] };
-    if (namespaces.length === 0) return graph;
+    if (namespaces.length === 0 && !hasActiveFilters(filters)) return graph;
     const wanted = new Set(namespaces);
-    const nodes = graph.nodes.filter((n) => wanted.has(n.namespace));
+    const nodes = graph.nodes.filter(
+      (n) => (wanted.size === 0 || wanted.has(n.namespace)) && nodeMatchesFilters(n, filters),
+    );
     const ids = new Set(nodes.map((n) => n.id));
     return {
       nodes,
       edges: graph.edges.filter((e) => ids.has(e.source) && ids.has(e.target)),
       columnEdges: graph.columnEdges.filter((e) => ids.has(e.source) && ids.has(e.target)),
     };
-  }, [graph, namespaces]);
+  }, [graph, namespaces, filters]);
+
+  const activeFilterCount = useMemo(() => countFilters(filters), [filters]);
+  const filterSummary = useMemo(
+    () =>
+      [
+        `Namespaces: ${namespaces.length === 0 ? 'all' : namespaces.join(', ')}`,
+        ...filters
+          .filter((group) => group.filters.length > 0)
+          .map((group) => `${group.namespace}: ${group.filters.map(describeFilter).join(' and ')}`),
+      ].join('\n'),
+    [filters, namespaces],
+  );
 
   const nodeById = useMemo(() => new Map(scoped.nodes.map((n) => [n.id, n])), [scoped]);
   const datasets = useMemo(() => scoped.nodes.filter((n): n is DatasetNode => n.type === 'dataset'), [scoped]);
@@ -520,22 +560,35 @@ function Explorer() {
     setQuery('');
     const target = graph?.nodes.find((n) => n.id === id);
     const nextMode: Mode = mode === 'column' && (target ? target.type === 'job' : id.startsWith('job:')) ? 'table' : mode;
-    // A node selected from search may have been hidden by the namespace
-    // filter; reveal it too.
+    // A node selected from search or the pinned card may have been hidden by
+    // the namespace filter or the inherited query filters; reveal it too.
     const revealedNamespaces =
       target && namespaces.length > 0 && !namespaces.includes(target.namespace)
         ? [...namespaces, target.namespace]
         : null;
-    if (!revealedNamespaces && nextMode === mode && id === selectedId) {
+    const revealedFilters =
+      target && !nodeMatchesFilters(target, filters)
+        ? filters.flatMap((group) => {
+            if (group.namespace !== target.namespace) return [group];
+            // Keep the rules the node passes and drop the ones hiding it. An
+            // empty group no longer constrains that namespace.
+            const kept = group.filters.filter((filter) => nodeMatchesFilter(target, filter));
+            return kept.length > 0 ? [{ ...group, filters: kept }] : [];
+          })
+        : null;
+    const revealed = revealedNamespaces != null || revealedFilters != null;
+    if (!revealed && nextMode === mode && id === selectedId) {
       centerOn(id);
       return;
     }
     pendingCenter.current = id;
-    updateSearch({
-      mode: nextMode,
-      selected: id,
-      ...(revealedNamespaces ? { namespaces: revealedNamespaces } : {}),
-    });
+    if (revealed && activeSet) {
+      updateFilterSet(activeSet.id, {
+        namespaces: revealedNamespaces ?? namespaces,
+        filters: revealedFilters ?? filters,
+      });
+    }
+    updateSearch({ mode: nextMode, selected: id });
   };
 
   const togglePin = useCallback(
@@ -607,8 +660,19 @@ function Explorer() {
         <NamespacePicker
           namespaces={availableNamespaces}
           selected={namespaces}
-          onChange={(next) => updateSearch({ namespaces: next })}
+          onChange={changeNamespaces}
         />
+        {activeFilterCount > 0 && (
+          <div className="query-chip" title={filterSummary}>
+            <ListFilter size={15} aria-hidden="true" />
+            <span className="query-chip-label">
+              {activeFilterCount} {activeFilterCount === 1 ? 'filter' : 'filters'}
+            </span>
+            <Link to="/nodes" search={{ filterSet }} className="query-chip-edit">
+              Edit
+            </Link>
+          </div>
+        )}
         <div className="toolbar-actions">
           <ToolbarIconButton
             className="toolbar-action"
@@ -636,6 +700,11 @@ function Explorer() {
         )}
         {!error && !loading && graph && graph.nodes.length === 0 && (
           <div className="banner">No jobs or datasets found. Check that the database path and tables in shared/schema.ts are correct.</div>
+        )}
+        {!error && !loading && graph && graph.nodes.length > 0 && scoped.nodes.length === 0 && (
+          <div className="banner">
+            No nodes match the current namespace filters. Clear them here or edit them in the Nodes view.
+          </div>
         )}
         {!error && !loading && mode === 'column' && graph && graph.nodes.length > 0 && scoped.columnEdges.length === 0 && (
           <div className="banner">No column lineage recorded for these datasets. Check the column_lineage table in shared/schema.ts.</div>

@@ -7,8 +7,8 @@ An interactive web application for exploring [OpenLineage] metadata stored in [D
 - **Table & Column Lineage**: Switch seamlessly between high-level dataset/job flows and fine-grained column-to-column transformations.
 - **Interactive Graph Exploration**: Click any node or column to highlight its upstream (blue) and downstream (copper) lineage, isolate connected subgraphs, or pin a node to filter by hop count (`1–4` or `all`) and direction (`upstream` / `downstream`).
 - **Views & CRUD Indicators**: Visualize database views as direct dataset-to-dataset edges and color-code job outputs by operation (`Create`, `Update`, `Delete`).
-- **Searchable Node Catalog (`/nodes`)**: Browse and filter all jobs and datasets by keyword, namespace, type, or archetype, select several rows with Ctrl-click (⌘-click), and open them all pinned in the graph.
-- **Shareable URL State**: Every active view, filter, selection, and pinned configuration is stored in the URL query string for bookmarking and sharing.
+- **Searchable Node Catalog (`/nodes`)**: Browse and filter all jobs and datasets by keyword, namespace, type, or archetype, select several rows with Ctrl-click (⌘-click), and open them all pinned in the graph. Per-namespace query filters narrow each namespace independently and carry over to the graph; named filter sets are persisted in the browser's local storage.
+- **Shareable URL State**: View state, selections, pins, and the active filter set ID are stored in the URL query string. Filter definitions stay in local storage and are referenced by ID.
 - **Two Execution Modes**:
   - **Local Development / Live Server**: Queries a local or remote DuckDB process over DuckDB's [Quack remote protocol] with live reload whenever SQL files under `data/` change.
   - **Cloudflare Workers Free (Zero-Backend)**: Packages the UI, DuckDB-Wasm, browser extensions, and a Parquet database snapshot into an assets-only Cloudflare Worker that runs entirely in the browser.
@@ -53,13 +53,15 @@ When `pnpm dev` starts, the `rebuild-db` Vite plugin:
 - **Pinning & Hop Filtering**: Click **Pin** in the details panel to add the selected node to a pinned card in the viewport while you pan, zoom, or inspect other nodes. Ctrl-click (or ⌘-click) any node to pin or unpin it directly; the card lists every pinned node and filters to the union of their lineages:
   - Click **Bring into view** next to a pinned node to re-select and center it (automatically adding its namespace to the active filter if hidden).
   - Expand the pinned card to restrict the visible graph by **Degree** (`1` to `4` hops, or `All`) and **Show** direction (**All**, **Upstream** only, or **Downstream** only) in both table and column modes. The controls apply to every pinned node.
-- **Searching & Filtering**: Search by job, dataset, namespace, or column name; filter the graph to one or more namespaces; or click **Refresh the database** in the header to re-run queries against the database.
+- **Searching & Filtering**: Search by job, dataset, namespace, or column name; filter the graph to one or more namespaces; or click **Refresh the database** in the header to re-run queries against the database. Per-namespace query filters created in the Nodes view are applied here automatically; the toolbar chip shows how many are active and links back to the editor.
 - **Side Details Panel**: Displays descriptions, archetypes, a job's inputs and outputs, a dataset's producers, consumers, views, and schema fields, or a column's upstream/downstream transformations and producing jobs.
 
 ### Nodes Directory (`/nodes`)
 
 Switch to **Nodes** in the top navigation bar to browse every job and dataset in a table:
 - Filter by search text, namespace, node type (`job` or `dataset`), or `archetype`.
+- Use the **Namespaces** multi-select above the table to choose one or more namespaces. Open the collapsible **Namespace filters** accordion to build a separate query for each selected namespace: the selection appears as a vertical tab list (all namespaces are listed when **All namespaces** is selected), and each tab shows a badge when it has filters. While the accordion is open, the active tab limits the table to that namespace. Add any number of field/operator/value rules (for example `Name contains daily` and `Archetype is ETL`) inside a tab. Rules within a namespace are ANDed; nodes from namespaces without filters are unaffected. The namespace selection and filters are inherited by the graph.
+- The site-wide header contains the **Filter set** combobox and displays the active set name. Select a saved set there to load its namespaces and filters. In the Nodes view, **Rename** opens a dialog to rename the active set, and **Duplicate** opens a dialog to copy the current namespaces and filters into a new set; leave the duplicate name blank to use **Untitled filter set**. **Clear** in the header clears the active filters and set. Filter set IDs appear only in the `filterSet` URL parameter, so a link with `filterSet=<id>` resolves the stored namespaces and filters when it is opened in the same browser. Changes to a loaded set are saved automatically.
 - Click **Graph →** on any row to open and select that node directly in the lineage graph.
 - Click a row to select one node, or Ctrl-click (⌘-click) rows to add and remove nodes from the selection. Selected rows are highlighted.
 - Click **Select all** to select every node matching the current filters, or **Clear selection** to reset the selection.
@@ -67,28 +69,28 @@ Switch to **Nodes** in the top navigation bar to browse every job and dataset in
 
 ### URL Query Parameters
 
-All view state is synchronized with the URL (default values are omitted for clean URLs):
+All view state is synchronized with the URL (default values are omitted for clean URLs). Namespace selections and per-namespace filters are stored in local filter sets, so the URL only carries the filter set ID:
 
 #### Graph (`/`)
 
 | Parameter | Values | Default | Description |
 |---|---|---|---|
 | `mode` | `table` \| `column` | `table` | Active lineage view mode |
-| `namespaces` | JSON array of strings | `[]` (all) | Filter graph to specific namespaces (e.g. `namespaces=["warehouse"]`) |
 | `selected` | Node or column ID | `""` | Currently selected job, dataset, or column |
 | `pinned` | JSON array of node IDs | `[]` | Jobs or datasets pinned to the viewport |
 | `degree` | `1` \| `2` \| `3` \| `4` \| `all` | `all` | Max upstream/downstream hops around each pinned node |
 | `direction` | `all` \| `upstream` \| `downstream` | `all` | Restrict lineage around the pinned nodes by direction |
 | `isolate` | `true` \| `false` | `false` | Hide nodes/columns outside the selected item's lineage |
+| `filterSet` | saved filter set ID | `""` | ID of the local filter set that supplies the namespaces and filters |
 
 #### Nodes Table (`/nodes`)
 
 | Parameter | Values | Default | Description |
 |---|---|---|---|
 | `q` | string | `""` | Free-text search filter |
-| `namespace` | namespace string \| `all` | `all` | Filter by namespace |
 | `type` | `all` \| `job` \| `dataset` | `all` | Filter by entity type |
 | `archetype` | archetype string \| `all` | `all` | Filter by presentation archetype |
+| `filterSet` | saved filter set ID | `""` | ID of the local filter set that supplies the namespaces and filters |
 
 ---
 

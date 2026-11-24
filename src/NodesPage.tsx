@@ -1,51 +1,270 @@
-import { useCallback, useMemo, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
+import { Accordion } from '@base-ui-components/react/accordion';
 import { Button } from '@base-ui-components/react/button';
 import { Field } from '@base-ui-components/react/field';
 import { Input } from '@base-ui-components/react/input';
-import { Select } from '@base-ui-components/react/select';
-import { ArrowRight, Check, ChevronDown, Pin, X } from 'lucide-react';
+import { Tabs } from '@base-ui-components/react/tabs';
+import { ArrowRight, Check, ChevronDown, ListFilter, Pin, Plus, Trash2, X } from 'lucide-react';
 import type { LineageNode } from '../shared/types.ts';
+import {
+  FILTER_FIELD_OPTIONS,
+  FILTER_OPERATOR_OPTIONS,
+  countFilters,
+  filterNeedsValue,
+  filtersSignature,
+  hasActiveFilters,
+  namespaceSelectionSignature,
+  nodeMatchesFilters,
+  type FilterField,
+  type FilterOperator,
+  type NamespaceFilterGroup,
+  type NodeFilter,
+} from './filters.ts';
+import { createFilterSet, updateFilterSet, useFilterSets } from './filterStore.ts';
+import FilterSelect from './FilterSelect.tsx';
+import NamespacePicker from './NamespacePicker.tsx';
 import type { NodesSearch } from './search.ts';
 import { useGraph } from './useGraph.ts';
 
-interface FilterSelectProps {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  /** `[value, label]` pairs; the first one should be the "all" entry. */
-  options: [string, string][];
+interface QueryEditorProps {
+  /** Every namespace in the graph, used to populate the selection menu. */
+  namespaces: string[];
+  /** Entry namespaces for the editor; an empty list means all namespaces. */
+  selectedNamespaces: string[];
+  groups: NamespaceFilterGroup[];
+  onChange: (next: NamespaceFilterGroup[]) => void;
+  /** Namespace to focus in the table while the accordion is open. */
+  onNamespaceFocus: (namespace: string | null) => void;
 }
 
-function FilterSelect({ label, value, onChange, options }: FilterSelectProps) {
+/**
+ * Per-namespace query editor. The selected namespaces are listed as vertical
+ * tabs; each tab holds any number of field/operator/value rules, and all rules
+ * in a tab are ANDed. Namespaces with no selected filter group are unaffected.
+ */
+function QueryEditor({
+  namespaces,
+  selectedNamespaces,
+  groups,
+  onChange,
+  onNamespaceFocus,
+}: QueryEditorProps) {
+  const total = countFilters(groups);
+
+  // An empty selection means all namespaces, matching the Graph view.
+  const tabNamespaces = useMemo(() => {
+    const source =
+      selectedNamespaces.length > 0
+        ? selectedNamespaces
+        : [...namespaces, ...groups.map((group) => group.namespace)];
+    return [...new Set(source)].sort((a, b) => a.localeCompare(b));
+  }, [namespaces, selectedNamespaces, groups]);
+
+  const [activeNamespace, setActiveNamespace] = useState(tabNamespaces[0] ?? '');
+  const [open, setOpen] = useState(true);
+  const currentNamespace = tabNamespaces.includes(activeNamespace)
+    ? activeNamespace
+    : (tabNamespaces[0] ?? '');
+
+  useEffect(() => {
+    onNamespaceFocus(open ? currentNamespace || null : null);
+  }, [open, currentNamespace, onNamespaceFocus]);
+
+  const groupFor = (namespace: string) =>
+    groups.find((group) => group.namespace === namespace);
+
+  const setRules = (namespace: string, next: NodeFilter[]) => {
+    const exists = groups.some((group) => group.namespace === namespace);
+    if (!exists) {
+      if (next.length > 0) onChange([...groups, { namespace, filters: next }]);
+      return;
+    }
+    onChange(
+      next.length > 0
+        ? groups.map((group) =>
+            group.namespace === namespace ? { ...group, filters: next } : group,
+          )
+        : groups.filter((group) => group.namespace !== namespace),
+    );
+  };
+
+  const addRule = (namespace: string) =>
+    setRules(namespace, [
+      ...(groupFor(namespace)?.filters ?? []),
+      { field: 'name', operator: 'contains', value: '' },
+    ]);
+
+  const updateRule = (namespace: string, ruleIndex: number, patch: Partial<NodeFilter>) =>
+    setRules(
+      namespace,
+      (groupFor(namespace)?.filters ?? []).map((filter, i) =>
+        i === ruleIndex ? { ...filter, ...patch } : filter,
+      ),
+    );
+
+  const removeRule = (namespace: string, ruleIndex: number) =>
+    setRules(
+      namespace,
+      (groupFor(namespace)?.filters ?? []).filter((_, i) => i !== ruleIndex),
+    );
+
+  const renderRules = (namespace: string) => {
+    const rules = groupFor(namespace)?.filters ?? [];
+    return (
+      <>
+        {rules.length > 0 && (
+          <ul className="query-rules">
+            {rules.map((filter, ruleIndex) => (
+              <li className="query-rule" key={ruleIndex}>
+                <FilterSelect
+                  label="Field"
+                  className="query-field"
+                  value={filter.field}
+                  onChange={(value) =>
+                    updateRule(namespace, ruleIndex, { field: value as FilterField })
+                  }
+                  options={FILTER_FIELD_OPTIONS.map(
+                    (option): [string, string] => [option.value, option.label],
+                  )}
+                />
+                <FilterSelect
+                  label="Operator"
+                  className="query-operator"
+                  value={filter.operator}
+                  onChange={(value) =>
+                    updateRule(namespace, ruleIndex, { operator: value as FilterOperator })
+                  }
+                  options={FILTER_OPERATOR_OPTIONS.map(
+                    (option): [string, string] => [option.value, option.label],
+                  )}
+                />
+                <Field.Root className="field grow">
+                  <Field.Label>Value</Field.Label>
+                  <Input
+                    value={filter.value}
+                    disabled={!filterNeedsValue(filter.operator)}
+                    placeholder={
+                      filter.operator === 'matches'
+                        ? 'Regular expression, e.g. ^daily_'
+                        : 'Value or pattern'
+                    }
+                    onChange={(event) =>
+                      updateRule(namespace, ruleIndex, { value: event.target.value })
+                    }
+                  />
+                </Field.Root>
+                <Button
+                  className="icon-btn"
+                  type="button"
+                  onClick={() => removeRule(namespace, ruleIndex)}
+                  aria-label={`Remove ${filter.field} filter from ${namespace}`}
+                  title="Remove filter"
+                >
+                  <Trash2 size={15} aria-hidden="true" />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Button
+          className="btn small query-add-rule"
+          type="button"
+          onClick={() => addRule(namespace)}
+        >
+          <Plus size={14} aria-hidden="true" />
+          Add filter
+        </Button>
+      </>
+    );
+  };
+
   return (
-    <Field.Root className="field">
-      <Field.Label>{label}</Field.Label>
-      <Select.Root value={value} onValueChange={(next) => onChange(next ?? options[0][0])}>
-        <Select.Trigger className="select-trigger" aria-label={label}>
-          <Select.Value />
-          <Select.Icon className="select-icon">
-            <ChevronDown size={14} aria-hidden="true" />
-          </Select.Icon>
-        </Select.Trigger>
-        <Select.Portal>
-          <Select.Positioner className="popup-positioner" sideOffset={6} alignItemWithTrigger={false}>
-            <Select.Popup className="select-popup popup">
-              <Select.List>
-                {options.map(([optionValue, optionLabel]) => (
-                  <Select.Item key={optionValue} value={optionValue} className="select-item">
-                    <Select.ItemIndicator className="select-check">
-                      <Check size={13} strokeWidth={3} aria-hidden="true" />
-                    </Select.ItemIndicator>
-                    <Select.ItemText>{optionLabel}</Select.ItemText>
-                  </Select.Item>
-                ))}
-              </Select.List>
-            </Select.Popup>
-          </Select.Positioner>
-        </Select.Portal>
-      </Select.Root>
-    </Field.Root>
+    <Accordion.Root
+      className="query-editor"
+      value={open ? ['namespace-filters'] : []}
+      onValueChange={(value) => setOpen(value.includes('namespace-filters'))}
+      multiple={false}
+    >
+      <Accordion.Item value="namespace-filters" className="query-editor-item">
+        <Accordion.Header className="query-editor-header">
+          <Accordion.Trigger className="query-editor-trigger">
+            <span className="query-editor-trigger-title">
+              <ListFilter size={16} aria-hidden="true" />
+              Namespace filters
+            </span>
+            <span className="query-editor-summary">
+              {total > 0
+                ? `${total} ${total === 1 ? 'filter' : 'filters'}`
+                : 'no filters'}
+            </span>
+            <ChevronDown size={16} className="query-editor-caret" aria-hidden="true" />
+          </Accordion.Trigger>
+        </Accordion.Header>
+        <Accordion.Panel className="query-editor-panel">
+          <div className="query-editor-body">
+            {tabNamespaces.length === 0 ? (
+              <p className="muted small query-editor-empty">No namespaces available.</p>
+            ) : (
+              <div className="namespace-editor">
+                <Tabs.Root
+                  orientation="vertical"
+                  className="namespace-tabs"
+                  value={currentNamespace}
+                  onValueChange={(value) => {
+                    if (typeof value === 'string' && value) setActiveNamespace(value);
+                  }}
+                >
+                  <Tabs.List className="namespace-tab-list" aria-label="Namespace tabs">
+                    {tabNamespaces.map((namespace) => {
+                      const count = groupFor(namespace)?.filters.length ?? 0;
+                      return (
+                        <Tabs.Tab
+                          key={namespace}
+                          value={namespace}
+                          className="namespace-tab"
+                          aria-label={
+                            count > 0
+                              ? `${namespace}, ${count} ${count === 1 ? 'filter' : 'filters'}`
+                              : `${namespace}, no filters`
+                          }
+                        >
+                          <span className="mono namespace-tab-name">{namespace}</span>
+                          {count > 0 && (
+                            <span className="namespace-tab-badge" aria-hidden="true">
+                              {count}
+                            </span>
+                          )}
+                        </Tabs.Tab>
+                      );
+                    })}
+                  </Tabs.List>
+                  {tabNamespaces.map((namespace) => {
+                    const count = groupFor(namespace)?.filters.length ?? 0;
+                    return (
+                      <Tabs.Panel
+                        key={namespace}
+                        value={namespace}
+                        className="namespace-panel"
+                      >
+                        <div className="namespace-panel-head">
+                          <span className={count > 0 ? 'query-count' : 'muted small'}>
+                            {count > 0
+                              ? `${count} ${count === 1 ? 'filter' : 'filters'}`
+                              : 'No filters set'}
+                          </span>
+                        </div>
+                        {renderRules(namespace)}
+                      </Tabs.Panel>
+                    );
+                  })}
+                </Tabs.Root>
+              </div>
+            )}
+          </div>
+        </Accordion.Panel>
+      </Accordion.Item>
+    </Accordion.Root>
   );
 }
 
@@ -63,16 +282,68 @@ const typeLabel = (n: LineageNode) => (
 );
 
 export default function NodesPage() {
-  const { q, namespace, type, archetype } = useSearch({ from: '/nodes' });
+  const { q, type, archetype, filterSet } = useSearch({ from: '/nodes' });
   const navigate = useNavigate({ from: '/nodes' });
   const { graph, error, loading } = useGraph();
+  const savedSets = useFilterSets();
+  const activeSet = useMemo(
+    () => savedSets.find((set) => set.id === filterSet) ?? null,
+    [savedSets, filterSet],
+  );
 
-  const update = (patch: Partial<NodesSearch>) =>
-    navigate({ search: (prev) => ({ ...(prev as NodesSearch), ...patch }) });
+  const [filters, setFilters] = useState<NamespaceFilterGroup[]>(activeSet?.filters ?? []);
+  const [namespaces, setNamespaces] = useState<string[]>(activeSet?.namespaces ?? []);
+  const [loadedSetId, setLoadedSetId] = useState(activeSet?.id ?? '');
 
-  const namespaces = useMemo(
+  const update = useCallback(
+    (patch: Partial<NodesSearch>) =>
+      navigate({ search: (prev) => ({ ...(prev as NodesSearch), ...patch }) }),
+    [navigate],
+  );
+
+  // Load the editor state when a different saved set becomes active.
+  const activeSetId = activeSet?.id ?? '';
+  useEffect(() => {
+    // Wait for local storage to resolve a newly selected set.
+    if (filterSet && !activeSet) return;
+    setFilters(activeSet?.filters ?? []);
+    setNamespaces(activeSet?.namespaces ?? []);
+    setLoadedSetId(activeSet?.id ?? '');
+  }, [activeSetId, filterSet]);
+
+  // Persist editor changes to the active set; URL only carries the set ID.
+  useEffect(() => {
+    if (!filterSet || !activeSet) return;
+    // Ignore the render where a newly loaded set has not reached local state yet.
+    if (loadedSetId !== activeSet.id) return;
+    if (
+      filtersSignature(activeSet.filters) === filtersSignature(filters) &&
+      namespaceSelectionSignature(activeSet.namespaces) ===
+        namespaceSelectionSignature(namespaces)
+    ) {
+      return;
+    }
+    updateFilterSet(activeSet.id, { filters, namespaces });
+  }, [filterSet, activeSet, loadedSetId, filters, namespaces]);
+
+  // The first non-empty edit gets an automatically saved Untitled set.
+  useEffect(() => {
+    if (filterSet) return;
+    // Do not recreate a set while local state still belongs to the set that
+    // just got cleared or deleted.
+    if (loadedSetId !== '') return;
+    if (filters.length === 0 && namespaces.length === 0) return;
+    const set = createFilterSet('Untitled filter set', namespaces, filters);
+    update({ filterSet: set.id });
+  }, [filterSet, loadedSetId, filters, namespaces, update]);
+
+  const availableNamespaces = useMemo(
     () => (graph ? [...new Set(graph.nodes.map((n) => n.namespace))].sort() : []),
     [graph],
+  );
+  const namespaceOptions = useMemo(
+    () => [...new Set([...availableNamespaces, ...namespaces])].sort(),
+    [availableNamespaces, namespaces],
   );
 
   const archetypes = useMemo(
@@ -83,13 +354,17 @@ export default function NodesPage() {
     [graph],
   );
 
+  const [focusedNamespace, setFocusedNamespace] = useState<string | null>(null);
+
   const nodes = useMemo(() => {
     if (!graph) return [];
     const term = q.trim().toLowerCase();
     return graph.nodes
-      .filter((n) => namespace === 'all' || n.namespace === namespace)
+      .filter((n) => namespaces.length === 0 || namespaces.includes(n.namespace))
+      .filter((n) => focusedNamespace === null || n.namespace === focusedNamespace)
       .filter((n) => type === 'all' || n.type === type)
       .filter((n) => archetype === 'all' || n.archetype === archetype)
+      .filter((n) => nodeMatchesFilters(n, filters))
       .filter((n) => {
         if (!term) return true;
         return [n.name, n.namespace, n.title ?? '', n.description ?? '', n.archetype ?? ''].some((v) =>
@@ -97,9 +372,15 @@ export default function NodesPage() {
         );
       })
       .sort((a, b) => a.name.localeCompare(b.name) || a.namespace.localeCompare(b.namespace));
-  }, [graph, q, namespace, type, archetype]);
+  }, [graph, q, type, archetype, namespaces, focusedNamespace, filters]);
 
-  const hasFilters = q !== '' || namespace !== 'all' || type !== 'all' || archetype !== 'all';
+  const hasFilters =
+    q !== '' ||
+    type !== 'all' ||
+    archetype !== 'all' ||
+    namespaces.length > 0 ||
+    filterSet !== '' ||
+    hasActiveFilters(filters);
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
@@ -131,12 +412,14 @@ export default function NodesPage() {
             onChange={(e) => update({ q: e.target.value })}
           />
         </Field.Root>
-        <FilterSelect
-          label="Namespace"
-          value={namespace}
-          onChange={(value) => update({ namespace: value })}
-          options={[['all', 'All namespaces'], ...namespaces.map((n): [string, string] => [n, n])]}
-        />
+        <Field.Root className="field namespace-field">
+          <Field.Label>Namespaces</Field.Label>
+          <NamespacePicker
+            namespaces={namespaceOptions}
+            selected={namespaces}
+            onChange={setNamespaces}
+          />
+        </Field.Root>
         <FilterSelect
           label="Type"
           value={type}
@@ -156,13 +439,25 @@ export default function NodesPage() {
         <Button
           className="btn"
           type="button"
-          onClick={() => update({ q: '', namespace: 'all', type: 'all', archetype: 'all' })}
+          onClick={() => {
+            setFilters([]);
+            setNamespaces([]);
+            update({ q: '', type: 'all', archetype: 'all', filterSet: '' });
+          }}
           disabled={!hasFilters}
         >
           <X size={15} aria-hidden="true" />
           Clear
         </Button>
       </form>
+
+      <QueryEditor
+        namespaces={availableNamespaces}
+        selectedNamespaces={namespaces}
+        groups={filters}
+        onChange={setFilters}
+        onNamespaceFocus={setFocusedNamespace}
+      />
 
       {error && (
         <div className="banner error inline" role="alert">
@@ -199,7 +494,7 @@ export default function NodesPage() {
                       search={{
                         pinned: selectedNodes.map((n) => n.id),
                         selected: '',
-                        namespaces: namespace === 'all' ? [] : [namespace],
+                        filterSet,
                       }}
                       className="btn small primary"
                     >
@@ -253,7 +548,10 @@ export default function NodesPage() {
                     <td className="actions-cell">
                       <Link
                         to="/"
-                        search={{ selected: n.id, namespaces: namespace === 'all' ? [] : [namespace] }}
+                        search={{
+                          selected: n.id,
+                          filterSet,
+                        }}
                         className="btn small"
                         aria-label={`Browse ${n.name} in the graph`}
                       >

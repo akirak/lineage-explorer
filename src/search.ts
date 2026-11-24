@@ -1,5 +1,44 @@
 import type { SearchSchemaInput } from '@tanstack/react-router';
 
+// ---------------------------------------------------------------------------
+// Common search parameters
+//
+// The Graph and Nodes views filter the same set of nodes, so they share the
+// parameters below. Keeping the keys and parsing in one place lets navigation
+// carry the active filter between the two routes and keeps shared links
+// consistent.
+// ---------------------------------------------------------------------------
+
+/** Parameters shared by the Graph and Nodes views. */
+export type CommonSearch = {
+  /** Namespaces to show; empty means all namespaces. */
+  namespaces: string[];
+};
+
+/** Navigation may omit any common field; defaults fill the gaps. */
+export type CommonSearchInput = Partial<CommonSearch> & {
+  /** Legacy single-namespace parameter, still accepted from older links. */
+  namespace?: unknown;
+} & SearchSchemaInput;
+
+export const defaultCommonSearch: CommonSearch = {
+  namespaces: [],
+};
+
+function parseNamespaces(search: CommonSearchInput): string[] {
+  const raw = search.namespaces;
+  const values = Array.isArray(raw) ? raw : raw != null ? [raw] : [];
+  const picked = values.filter((n): n is string => typeof n === 'string' && n !== '' && n !== 'all');
+  if (picked.length > 0) return [...new Set(picked)];
+  // Backwards compatibility with the old single-namespace parameter.
+  const legacy = search.namespace;
+  return typeof legacy === 'string' && legacy !== '' && legacy !== 'all' ? [legacy] : [];
+}
+
+export function parseCommonSearch(search: CommonSearchInput): CommonSearch {
+  return { namespaces: parseNamespaces(search) };
+}
+
 export type Mode = 'table' | 'column';
 
 /** Maximum lineage depth shown around the pinned nodes; 'all' disables the limit. */
@@ -9,10 +48,8 @@ export type LineageDegree = 'all' | '1' | '2' | '3' | '4';
 export type LineageDirection = 'all' | 'upstream' | 'downstream';
 
 /** UI state kept in the URL query string so a view can be shared or reloaded. */
-export type ExplorerSearch = {
+export type ExplorerSearch = CommonSearch & {
   mode: Mode;
-  /** Namespaces to show; empty means all namespaces. */
-  namespaces: string[];
   /** Maximum number of upstream/downstream hops to show around each pinned node. */
   degree: LineageDegree;
   /** Restrict each pinned node's visible lineage to upstream or downstream nodes. */
@@ -31,24 +68,14 @@ export type ExplorerSearchInput = Partial<ExplorerSearch> & {
 } & SearchSchemaInput;
 
 export const defaultSearch: ExplorerSearch = {
+  ...defaultCommonSearch,
   mode: 'table',
-  namespaces: [],
   degree: 'all',
   direction: 'all',
   selected: '',
   pinned: [],
   isolate: false,
 };
-
-function parseNamespaces(search: ExplorerSearchInput): string[] {
-  const raw = search.namespaces;
-  const values = Array.isArray(raw) ? raw : raw != null ? [raw] : [];
-  const picked = values.filter((n): n is string => typeof n === 'string' && n !== '' && n !== 'all');
-  if (picked.length > 0) return [...new Set(picked)];
-  // Backwards compatibility with the old single-namespace parameter.
-  const legacy = search.namespace;
-  return typeof legacy === 'string' && legacy !== '' && legacy !== 'all' ? [legacy] : [];
-}
 
 function parsePinned(search: ExplorerSearchInput): string[] {
   const raw = search.pinned;
@@ -61,8 +88,8 @@ export function parseSearch(search: ExplorerSearchInput): ExplorerSearch {
   const degree = search.degree;
   const direction = search.direction;
   return {
+    ...parseCommonSearch(search),
     mode: search.mode === 'column' ? 'column' : 'table',
-    namespaces: parseNamespaces(search),
     degree: degree === '1' || degree === '2' || degree === '3' || degree === '4' ? degree : 'all',
     direction: direction === 'upstream' || direction === 'downstream' ? direction : 'all',
     selected: typeof search.selected === 'string' ? search.selected : '',
@@ -74,18 +101,20 @@ export function parseSearch(search: ExplorerSearchInput): ExplorerSearch {
 export type NodeTypeFilter = 'all' | 'job' | 'dataset';
 
 /** Filters for the node table, also kept in the URL so a filtered list can be shared. */
-export type NodesSearch = {
+export type NodesSearch = CommonSearch & {
   q: string;
-  namespace: string;
   type: NodeTypeFilter;
   archetype: string;
 };
 
-export type NodesSearchInput = Partial<NodesSearch> & SearchSchemaInput;
+export type NodesSearchInput = Partial<NodesSearch> & {
+  /** Legacy single-namespace parameter, still accepted from older links. */
+  namespace?: unknown;
+} & SearchSchemaInput;
 
 export const defaultNodesSearch: NodesSearch = {
+  ...defaultCommonSearch,
   q: '',
-  namespace: 'all',
   type: 'all',
   archetype: 'all',
 };
@@ -93,8 +122,8 @@ export const defaultNodesSearch: NodesSearch = {
 export function parseNodesSearch(search: NodesSearchInput): NodesSearch {
   const type = search.type;
   return {
+    ...parseCommonSearch(search),
     q: typeof search.q === 'string' ? search.q : '',
-    namespace: typeof search.namespace === 'string' && search.namespace ? search.namespace : 'all',
     type: type === 'job' || type === 'dataset' ? type : 'all',
     archetype: typeof search.archetype === 'string' && search.archetype ? search.archetype : 'all',
   };

@@ -549,6 +549,7 @@ button, input, select { font: inherit; color: inherit; }
 }
 .filters .field input:hover { border-color: #b9c3c4; }
 .filters .field input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px var(--teal-ring); outline: none; }
+.filters .namespace-picker .picker-toggle { height: 36px; }
 .nodes-status { margin: 0 0 8px; }
 .table-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-sm); overflow: hidden; }
 .nodes-table { width: 100%; border-collapse: collapse; }

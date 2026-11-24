@@ -7,6 +7,7 @@ import { Select } from '@base-ui-components/react/select';
 import { ArrowRight, Check, ChevronDown, X } from 'lucide-react';
 import type { LineageNode } from '../shared/types.ts';
 import type { NodesSearch } from './search.ts';
+import NamespacePicker from './NamespacePicker.tsx';
 import { useGraph } from './useGraph.ts';
 
 interface FilterSelectProps {
@@ -63,14 +64,14 @@ const typeLabel = (n: LineageNode) => (
 );
 
 export default function NodesPage() {
-  const { q, namespace, type, archetype } = useSearch({ from: '/nodes' });
+  const { q, namespaces: selectedNamespaces, type, archetype } = useSearch({ from: '/nodes' });
   const navigate = useNavigate({ from: '/nodes' });
   const { graph, error, loading } = useGraph();
 
   const update = (patch: Partial<NodesSearch>) =>
     navigate({ search: (prev) => ({ ...(prev as NodesSearch), ...patch }) });
 
-  const namespaces = useMemo(
+  const availableNamespaces = useMemo(
     () => (graph ? [...new Set(graph.nodes.map((n) => n.namespace))].sort() : []),
     [graph],
   );
@@ -86,8 +87,9 @@ export default function NodesPage() {
   const nodes = useMemo(() => {
     if (!graph) return [];
     const term = q.trim().toLowerCase();
+    const wantedNamespaces = new Set(selectedNamespaces);
     return graph.nodes
-      .filter((n) => namespace === 'all' || n.namespace === namespace)
+      .filter((n) => wantedNamespaces.size === 0 || wantedNamespaces.has(n.namespace))
       .filter((n) => type === 'all' || n.type === type)
       .filter((n) => archetype === 'all' || n.archetype === archetype)
       .filter((n) => {
@@ -97,9 +99,10 @@ export default function NodesPage() {
         );
       })
       .sort((a, b) => a.name.localeCompare(b.name) || a.namespace.localeCompare(b.namespace));
-  }, [graph, q, namespace, type, archetype]);
+  }, [graph, q, selectedNamespaces, type, archetype]);
 
-  const hasFilters = q !== '' || namespace !== 'all' || type !== 'all' || archetype !== 'all';
+  const hasFilters =
+    q !== '' || selectedNamespaces.length > 0 || type !== 'all' || archetype !== 'all';
 
   return (
     <main className="nodes-main">
@@ -113,12 +116,14 @@ export default function NodesPage() {
             onChange={(e) => update({ q: e.target.value })}
           />
         </Field.Root>
-        <FilterSelect
-          label="Namespace"
-          value={namespace}
-          onChange={(value) => update({ namespace: value })}
-          options={[['all', 'All namespaces'], ...namespaces.map((n): [string, string] => [n, n])]}
-        />
+        <Field.Root className="field">
+          <Field.Label>Namespace</Field.Label>
+          <NamespacePicker
+            namespaces={availableNamespaces}
+            selected={selectedNamespaces}
+            onChange={(next) => update({ namespaces: next })}
+          />
+        </Field.Root>
         <FilterSelect
           label="Type"
           value={type}
@@ -138,7 +143,7 @@ export default function NodesPage() {
         <Button
           className="btn"
           type="button"
-          onClick={() => update({ q: '', namespace: 'all', type: 'all', archetype: 'all' })}
+          onClick={() => update({ q: '', namespaces: [], type: 'all', archetype: 'all' })}
           disabled={!hasFilters}
         >
           <X size={15} aria-hidden="true" />
@@ -194,7 +199,7 @@ export default function NodesPage() {
                     <td className="actions-cell">
                       <Link
                         to="/"
-                        search={{ selected: n.id, namespaces: namespace === 'all' ? [] : [namespace] }}
+                        search={{ namespaces: selectedNamespaces, selected: n.id }}
                         className="btn small"
                         aria-label={`Browse ${n.name} in the graph`}
                       >

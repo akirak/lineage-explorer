@@ -71,23 +71,35 @@ export const filterOperatorLabel = (operator: FilterOperator) =>
 
 export const filterNeedsValue = (operator: FilterOperator) => !OPERATORS_WITHOUT_VALUE.has(operator);
 
-export const countFilters = (groups: NamespaceFilterGroup[]) =>
-  groups.reduce((count, group) => count + group.filters.length, 0);
+type FilterGroups = NamespaceFilterGroup[] | null | undefined;
 
-export const hasActiveFilters = (groups: NamespaceFilterGroup[]) => countFilters(groups) > 0;
+const groupsOrEmpty = (groups: FilterGroups): NamespaceFilterGroup[] =>
+  Array.isArray(groups) ? groups : [];
+
+export const countFilters = (groups: FilterGroups) =>
+  groupsOrEmpty(groups).reduce(
+    (count, group) => count + (Array.isArray(group.filters) ? group.filters.length : 0),
+    0,
+  );
+
+export const hasActiveFilters = (groups: FilterGroups) => countFilters(groups) > 0;
 
 /** Stable signature for comparing two filter group lists regardless of object identity. */
-export const filtersSignature = (groups: NamespaceFilterGroup[]) =>
+export const filtersSignature = (groups: FilterGroups) =>
   JSON.stringify(
-    groups.map((group) => [
+    groupsOrEmpty(groups).map((group) => [
       group.namespace,
-      group.filters.map((filter) => [filter.field, filter.operator, filter.value]),
+      (Array.isArray(group.filters) ? group.filters : []).map((filter) => [
+        filter.field,
+        filter.operator,
+        filter.value,
+      ]),
     ]),
   );
 
 /** Stable signature for comparing namespace selections regardless of order. */
-export const namespaceSelectionSignature = (namespaces: string[]) =>
-  JSON.stringify([...new Set(namespaces)].sort());
+export const namespaceSelectionSignature = (namespaces: string[] | null | undefined) =>
+  JSON.stringify([...new Set(Array.isArray(namespaces) ? namespaces : [])].sort());
 
 /** Human-readable one-line description used for tooltips and the graph chip. */
 export function describeFilter(filter: NodeFilter): string {
@@ -236,8 +248,12 @@ export function namespaceMatchesFilters(node: LineageNode, group: NamespaceFilte
  * target the same namespace (only possible from hand-written URLs), all of
  * them must match.
  */
-export function nodeMatchesFilters(node: LineageNode, groups: NamespaceFilterGroup[]): boolean {
-  return groups
+export function nodeMatchesFilters(node: LineageNode, groups: FilterGroups): boolean {
+  return groupsOrEmpty(groups)
     .filter((group) => group.namespace === node.namespace)
-    .every((group) => namespaceMatchesFilters(node, group));
+    .every((group) =>
+      (Array.isArray(group.filters) ? group.filters : []).every((filter) =>
+        nodeMatchesFilter(node, filter),
+      ),
+    );
 }

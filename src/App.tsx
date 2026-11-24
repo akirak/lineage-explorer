@@ -192,8 +192,14 @@ function Explorer() {
     () => savedFilterSets.find((set) => set.id === filterSet) ?? null,
     [savedFilterSets, filterSet],
   );
-  const filters = useMemo(() => activeSet?.filters ?? [], [activeSet]);
-  const namespaces = useMemo(() => activeSet?.namespaces ?? [], [activeSet]);
+  const filters = useMemo(
+    () => (Array.isArray(activeSet?.filters) ? activeSet.filters : []),
+    [activeSet],
+  );
+  const namespaces = useMemo(
+    () => (Array.isArray(activeSet?.namespaces) ? activeSet.namespaces : []),
+    [activeSet],
+  );
 
   // Re-run the queries against the Quack server; in dev the rebuild-db
   // plugin re-points it at the newest parquet build after every rebuild.

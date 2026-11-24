@@ -291,8 +291,12 @@ export default function NodesPage() {
     [savedSets, filterSet],
   );
 
-  const [filters, setFilters] = useState<NamespaceFilterGroup[]>(activeSet?.filters ?? []);
-  const [namespaces, setNamespaces] = useState<string[]>(activeSet?.namespaces ?? []);
+  const [filters, setFilters] = useState<NamespaceFilterGroup[]>(
+    Array.isArray(activeSet?.filters) ? activeSet.filters : [],
+  );
+  const [namespaces, setNamespaces] = useState<string[]>(
+    Array.isArray(activeSet?.namespaces) ? activeSet.namespaces : [],
+  );
   const [loadedSetId, setLoadedSetId] = useState(activeSet?.id ?? '');
 
   const update = useCallback(
@@ -306,8 +310,8 @@ export default function NodesPage() {
   useEffect(() => {
     // Wait for local storage to resolve a newly selected set.
     if (filterSet && !activeSet) return;
-    setFilters(activeSet?.filters ?? []);
-    setNamespaces(activeSet?.namespaces ?? []);
+    setFilters(Array.isArray(activeSet?.filters) ? activeSet.filters : []);
+    setNamespaces(Array.isArray(activeSet?.namespaces) ? activeSet.namespaces : []);
     setLoadedSetId(activeSet?.id ?? '');
   }, [activeSetId, filterSet]);
 

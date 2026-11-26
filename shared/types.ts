@@ -64,4 +64,6 @@ export type Graph = {
   nodes: LineageNode[];
   edges: LineageEdge[];
   columnEdges: ColumnEdge[];
+  /** Data-quality problems found while the graph was assembled, in display order. */
+  warnings: string[];
 };

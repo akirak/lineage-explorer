@@ -29,7 +29,8 @@ import { quackToken, quackUri, snapshotUrl } from 'virtual:quack-config';
 import { parquetViews } from '../shared/views.ts';
 import { schema as s } from '../shared/schema.ts';
 import { graphQueries, type AvailableColumns } from '../shared/queries.ts';
-import type { ColumnEdge, Crud, DatasetField, DatasetNode, Graph, LineageEdge, LineageNode } from '../shared/types.ts';
+import type { Graph } from '../shared/types.ts';
+import { assembleGraph, type GraphRows } from './assembleGraph.ts';
 
 /** A row as the graph queries return them: every column is a string or NULL. */
 type Row = Record<string, string | null>;
@@ -160,73 +161,6 @@ function sqlString(value: string): string {
 // remotely and assembled into a Graph in the browser.
 // ---------------------------------------------------------------------------
 
-interface NameRow {
-  namespace: string;
-  name: string;
-  title: string | null;
-  description: string | null;
-  archetype: string | null;
-}
-
-interface IoRow {
-  dataset_namespace: string;
-  dataset_name: string;
-  job_namespace: string;
-  job_name: string;
-}
-
-interface WriteRow extends IoRow {
-  crud: string | null;
-}
-
-/** Most destructive first, so conflicting job_output rows keep the strongest marker. */
-const CRUD_ORDER: Crud[] = ['D', 'U', 'C'];
-
-/** Normalize job_output.crud to C, U or D; anything else is ignored. */
-function normalizeCrud(value: string | null): Crud | null {
-  const crud = value?.trim().toUpperCase();
-  return crud === 'C' || crud === 'U' || crud === 'D' ? crud : null;
-}
-
-/** Interpret the optional dataset_field.required column as a boolean. */
-function normalizeRequired(value: string | null): boolean {
-  const required = value?.trim().toLowerCase();
-  return required === 'true' || required === 't' || required === '1' || required === 'yes' || required === 'y';
-}
-
-interface FieldRow {
-  dataset_namespace: string;
-  dataset_name: string;
-  name: string;
-  type: string | null;
-  description: string | null;
-  required: string | null;
-}
-
-interface ColumnLineageRow {
-  job_namespace: string | null;
-  job_name: string | null;
-  input_namespace: string;
-  input_dataset: string;
-  input_field: string;
-  output_namespace: string;
-  output_dataset: string;
-  output_field: string;
-  transformation_type: string | null;
-  transformation_subtype: string | null;
-  description: string | null;
-}
-
-interface ViewRow {
-  view_namespace: string;
-  view_name: string;
-  base_namespace: string;
-  base_name: string;
-}
-
-const jobId = (ns: string, name: string) => `job:${ns}\u0000${name}`;
-const datasetId = (ns: string, name: string) => `dataset:${ns}\u0000${name}`;
-
 /** Columns present in each optional-column table, detected on the database. */
 async function loadAvailableColumns(query: QuackClient['query']): Promise<AvailableColumns> {
   const columns = async (table: string) => {
@@ -247,122 +181,16 @@ async function loadAvailableColumns(query: QuackClient['query']): Promise<Availa
 export async function loadGraph(): Promise<Graph> {
   const { query } = await getQuackClient();
   const queries = graphQueries(await loadAvailableColumns(query));
-  const jobs = (await query(queries.jobs)) as unknown as NameRow[];
-  const datasets = (await query(queries.datasets)) as unknown as NameRow[];
-  const reads = (await query(queries.reads)) as unknown as IoRow[];
-  const writes = (await query(queries.writes)) as unknown as WriteRow[];
-  const fields = (await query(queries.fields)) as unknown as FieldRow[];
-  const columnLineage = (await query(queries.columnLineage)) as unknown as ColumnLineageRow[];
-  const views = (await query(queries.views)) as unknown as ViewRow[];
-
-  const nodes = new Map<string, LineageNode>();
-  const addJob = (
-    namespace: string,
-    name: string,
-    title: string | null = null,
-    description: string | null = null,
-    archetype: string | null = null,
-  ) => {
-    const id = jobId(namespace, name);
-    if (!nodes.has(id)) nodes.set(id, { id, type: 'job', namespace, name, title, description, archetype });
-    return id;
+  const rows: GraphRows = {
+    jobs: (await query(queries.jobs)) as unknown as GraphRows['jobs'],
+    datasets: (await query(queries.datasets)) as unknown as GraphRows['datasets'],
+    reads: (await query(queries.reads)) as unknown as GraphRows['reads'],
+    writes: (await query(queries.writes)) as unknown as GraphRows['writes'],
+    fields: (await query(queries.fields)) as unknown as GraphRows['fields'],
+    columnLineage: (await query(queries.columnLineage)) as unknown as GraphRows['columnLineage'],
+    views: (await query(queries.views)) as unknown as GraphRows['views'],
   };
-  const addDataset = (
-    namespace: string,
-    name: string,
-    title: string | null = null,
-    description: string | null = null,
-    archetype: string | null = null,
-  ) => {
-    const id = datasetId(namespace, name);
-    if (!nodes.has(id)) {
-      nodes.set(id, { id, type: 'dataset', namespace, name, title, description, archetype, fields: [] });
-    }
-    return nodes.get(id) as DatasetNode;
-  };
-  const addField = (dataset: DatasetNode, field: DatasetField) => {
-    if (!dataset.fields.some((f) => f.name === field.name)) dataset.fields.push(field);
-  };
-
-  jobs.forEach((job) => addJob(job.namespace, job.name, job.title, job.description, job.archetype));
-  datasets.forEach((dataset) => addDataset(dataset.namespace, dataset.name, dataset.title, dataset.description, dataset.archetype));
-  for (const field of fields) {
-    addField(addDataset(field.dataset_namespace, field.dataset_name), {
-      name: field.name,
-      type: field.type ?? null,
-      description: field.description ?? null,
-      required: normalizeRequired(field.required),
-    });
-  }
-
-  const edges = new Map<string, LineageEdge>();
-  const addEdge = (source: string, target: string, kind: 'io' | 'view' = 'io', crud: Crud | null = null) => {
-    const id = `${source}->${target}`;
-    const existing = edges.get(id);
-    if (!existing) {
-      edges.set(id, { id, source, target, kind, crud });
-      return;
-    }
-    // Several job_output rows can describe the same pair; keep the strongest
-    // CRUD marker rather than letting the query order decide.
-    if (crud !== null && (existing.crud === null || CRUD_ORDER.indexOf(crud) < CRUD_ORDER.indexOf(existing.crud))) {
-      existing.crud = crud;
-    }
-  };
-
-  for (const read of reads) {
-    addEdge(addDataset(read.dataset_namespace, read.dataset_name).id, addJob(read.job_namespace, read.job_name));
-  }
-  for (const write of writes) {
-    addEdge(
-      addJob(write.job_namespace, write.job_name),
-      addDataset(write.dataset_namespace, write.dataset_name).id,
-      'io',
-      normalizeCrud(write.crud),
-    );
-  }
-  for (const view of views) {
-    addEdge(addDataset(view.base_namespace, view.base_name).id, addDataset(view.view_namespace, view.view_name).id, 'view');
-  }
-
-  const columnEdges = new Map<string, ColumnEdge>();
-  for (const row of columnLineage) {
-    const input = addDataset(row.input_namespace, row.input_dataset);
-    const output = addDataset(row.output_namespace, row.output_dataset);
-    // Columns referenced by lineage but missing from dataset_field still get a row.
-    addField(input, { name: row.input_field, type: null, description: null, required: false });
-    addField(output, { name: row.output_field, type: null, description: null, required: false });
-    const job = row.job_namespace != null && row.job_name != null ? addJob(row.job_namespace, row.job_name) : null;
-    if (job) {
-      addEdge(input.id, job);
-      addEdge(job, output.id);
-    }
-    const id = JSON.stringify([
-      input.id,
-      row.input_field,
-      output.id,
-      row.output_field,
-      job,
-      row.transformation_type,
-      row.transformation_subtype,
-      row.description,
-    ]);
-    if (!columnEdges.has(id)) {
-      columnEdges.set(id, {
-        id,
-        source: input.id,
-        sourceField: row.input_field,
-        target: output.id,
-        targetField: row.output_field,
-        job,
-        transformationType: row.transformation_type ?? null,
-        transformationSubtype: row.transformation_subtype ?? null,
-        description: row.description ?? null,
-      });
-    }
-  }
-
-  return { nodes: [...nodes.values()], edges: [...edges.values()], columnEdges: [...columnEdges.values()] };
+  return assembleGraph(rows);
 }
 
 function describe(error: unknown): string {

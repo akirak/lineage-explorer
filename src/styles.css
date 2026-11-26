@@ -327,20 +327,30 @@ button, input, select { font: inherit; color: inherit; }
 .canvas { flex: 1; position: relative; min-width: 0; }
 .react-flow { background: var(--paper); }
 
-.banner {
+.banner-stack {
   position: absolute;
   z-index: 10;
   top: 16px;
   left: 50%;
   transform: translateX(-50%);
-  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: max-content;
+  max-width: min(560px, calc(100% - 32px));
+}
+.banner {
   padding: 10px 16px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
 }
+.banner-stack .banner { position: static; transform: none; max-width: none; }
 .banner.error { border-color: var(--fail); color: var(--fail); }
+.banner.warning { border-color: var(--run); color: var(--ink); }
+.banner.warning strong { color: var(--run); }
+.banner-list { margin: 6px 0 0; padding-left: 18px; color: var(--ink-2); }
 
 .legend {
   position: absolute;

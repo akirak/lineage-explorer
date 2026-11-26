@@ -252,7 +252,7 @@ function Explorer() {
   );
 
   const scoped = useMemo<Graph>(() => {
-    if (!graph) return { nodes: [], edges: [], columnEdges: [] };
+    if (!graph) return { nodes: [], edges: [], columnEdges: [], warnings: [] };
     if (namespaces.length === 0 && !hasActiveFilters(filters)) return graph;
     const wanted = new Set(namespaces);
     const nodes = graph.nodes.filter(
@@ -263,6 +263,7 @@ function Explorer() {
       nodes,
       edges: graph.edges.filter((e) => ids.has(e.source) && ids.has(e.target)),
       columnEdges: graph.columnEdges.filter((e) => ids.has(e.source) && ids.has(e.target)),
+      warnings: graph.warnings,
     };
   }, [graph, namespaces, filters]);
 
@@ -699,22 +700,34 @@ function Explorer() {
       </Toolbar.Root>
 
       <div className="stage-body">
-        {error && (
-          <div className="banner error" role="alert">
-            Could not load the lineage graph: {error}. Check the Quack server (it starts with `pnpm dev`) and the table and column names in shared/schema.ts.
-          </div>
-        )}
-        {!error && !loading && graph && graph.nodes.length === 0 && (
-          <div className="banner">No jobs or datasets found. Check that the database path and tables in shared/schema.ts are correct.</div>
-        )}
-        {!error && !loading && graph && graph.nodes.length > 0 && scoped.nodes.length === 0 && (
-          <div className="banner">
-            No nodes match the current namespace filters. Clear them here or edit them in the Nodes view.
-          </div>
-        )}
-        {!error && !loading && mode === 'column' && graph && graph.nodes.length > 0 && scoped.columnEdges.length === 0 && (
-          <div className="banner">No column lineage recorded for these datasets. Check the column_lineage table in shared/schema.ts.</div>
-        )}
+        <div className="banner-stack">
+          {error && (
+            <div className="banner error" role="alert">
+              Could not load the lineage graph: {error}. Check the Quack server (it starts with `pnpm dev`) and the table and column names in shared/schema.ts.
+            </div>
+          )}
+          {!error && graph && graph.warnings.length > 0 && (
+            <div className="banner warning" role="status">
+              <strong>Some lineage rows were skipped.</strong>
+              <ul className="banner-list">
+                {graph.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {!error && !loading && graph && graph.nodes.length === 0 && (
+            <div className="banner">No jobs or datasets found. Check that the database path and tables in shared/schema.ts are correct.</div>
+          )}
+          {!error && !loading && graph && graph.nodes.length > 0 && scoped.nodes.length === 0 && (
+            <div className="banner">
+              No nodes match the current namespace filters. Clear them here or edit them in the Nodes view.
+            </div>
+          )}
+          {!error && !loading && mode === 'column' && graph && graph.nodes.length > 0 && scoped.columnEdges.length === 0 && (
+            <div className="banner">No column lineage recorded for these datasets. Check the column_lineage table in shared/schema.ts.</div>
+          )}
+        </div>
 
         <div className="canvas">
           <ReactFlow

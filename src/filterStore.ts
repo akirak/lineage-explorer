@@ -84,7 +84,8 @@ export function readFilterSets(): SavedFilterSet[] {
       if (set && !byId.has(set.id)) byId.set(set.id, set);
     }
     return [...byId.values()].sort(
-      (a, b) => b.updatedAt - a.updatedAt || a.name.localeCompare(b.name),
+      (a, b) =>
+        b.updatedAt - a.updatedAt || (a.name ?? '').localeCompare(b.name ?? ''),
     );
   } catch {
     // Corrupt or unavailable storage should behave like an empty collection.

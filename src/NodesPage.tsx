@@ -58,7 +58,7 @@ function QueryEditor({
       selectedNamespaces.length > 0
         ? selectedNamespaces
         : [...namespaces, ...groups.map((group) => group.namespace)];
-    return [...new Set(source)].sort((a, b) => a.localeCompare(b));
+    return [...new Set(source)].sort((a, b) => (a ?? '').localeCompare(b ?? ''));
   }, [namespaces, selectedNamespaces, groups]);
 
   const [activeNamespace, setActiveNamespace] = useState(tabNamespaces[0] ?? '');
@@ -375,7 +375,11 @@ export default function NodesPage() {
           v.toLowerCase().includes(term),
         );
       })
-      .sort((a, b) => a.name.localeCompare(b.name) || a.namespace.localeCompare(b.namespace));
+      .sort(
+        (a, b) =>
+          (a.name ?? '').localeCompare(b.name ?? '') ||
+          (a.namespace ?? '').localeCompare(b.namespace ?? ''),
+      );
   }, [graph, q, type, archetype, namespaces, focusedNamespace, filters]);
 
   const hasFilters =
@@ -466,6 +470,16 @@ export default function NodesPage() {
       {error && (
         <div className="banner error inline" role="alert">
           Could not load the lineage graph: {error}.
+        </div>
+      )}
+      {!error && graph && graph.warnings.length > 0 && (
+        <div className="banner warning inline" role="status">
+          <strong>Some lineage rows were skipped.</strong>
+          <ul className="banner-list">
+            {graph.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
         </div>
       )}
       {!error && loading && <p className="muted nodes-status">Loading…</p>}

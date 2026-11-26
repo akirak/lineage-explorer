@@ -49,7 +49,8 @@ When `pnpm dev` starts, the `rebuild-db` Vite plugin:
 - **Highlighting Lineage**: Click a job, dataset, or column to highlight its **upstream** dependencies in blue and **downstream** dependents in copper.
   - In **Table mode**, database views are drawn as dashed `dataset -> dataset` edges (with no job in between). Job output edges with CRUD metadata are colored green (`C` – Create), amber (`U` – Update), or red (`D` – Delete).
   - In **Column mode**, solid edges represent `DIRECT` transformations (identity, expressions, aggregations) and dashed edges represent `INDIRECT` transformations (joins, filters, groupings).
-- **Isolating a Subgraph**: Enable **Show only this lineage** in the details panel to hide unrelated nodes (and unrelated columns in column mode) and re-layout the graph.
+- **Isolating a Subgraph**: Enable **Show only this lineage** in the details panel to hide unrelated nodes and re-layout the graph. In column mode unrelated datasets are hidden, but every visible dataset keeps all of its columns on screen.
+- **Column Mode Schemas**: Column mode draws each visible dataset as a table with its full column list, so edges land on real schema columns even when the rest of the schema is off the lineage.
 - **Pinning & Hop Filtering**: Click **Pin** in the details panel to add the selected node to a pinned card in the viewport while you pan, zoom, or inspect other nodes. Ctrl-click (or ⌘-click) any node to pin or unpin it directly; the card lists every pinned node and filters to the union of their lineages:
   - Click **Bring into view** next to a pinned node to re-select and center it (automatically adding its namespace to the active filter if hidden).
   - Expand the pinned card to restrict the visible graph by **Degree** (`1` to `4` hops, or `All`) and **Show** direction (**All**, **Upstream** only, or **Downstream** only) in both table and column modes. The controls apply to every pinned node.
@@ -80,7 +81,7 @@ All view state is synchronized with the URL (default values are omitted for clea
 | `pinned` | JSON array of node IDs | `[]` | Jobs or datasets pinned to the viewport |
 | `degree` | `1` \| `2` \| `3` \| `4` \| `all` | `all` | Max upstream/downstream hops around each pinned node |
 | `direction` | `all` \| `upstream` \| `downstream` | `all` | Restrict lineage around the pinned nodes by direction |
-| `isolate` | `true` \| `false` | `false` | Hide nodes/columns outside the selected item's lineage |
+| `isolate` | `true` \| `false` | `false` | Hide nodes outside the selected item's lineage; column mode keeps all columns of each visible dataset |
 | `filterSet` | saved filter set ID | `""` | ID of the local filter set that supplies the namespaces and filters |
 
 #### Nodes Table (`/nodes`)

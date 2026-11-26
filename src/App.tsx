@@ -447,10 +447,10 @@ function Explorer() {
 
   const columnVisible = useMemo(() => {
     if (!filtering || !visibleLineage) return { datasets, links: colLinks };
-    // Keep only datasets on the lineage, and only their lineage columns.
-    const kept = datasets
-      .map((d) => ({ ...d, fields: d.fields.filter((f) => visibleLineage.has(colKey(d.id, f.name))) }))
-      .filter((d) => visibleDatasetIds.has(d.id) || d.fields.length > 0);
+    // Keep the datasets on the lineage, but draw every column of each so the
+    // tables read as real schemas; only the lineage columns get highlighted.
+    const onLineage = (d: DatasetNode) => d.fields.some((f) => visibleLineage.has(colKey(d.id, f.name)));
+    const kept = datasets.filter((d) => visibleDatasetIds.has(d.id) || onLineage(d));
     return {
       datasets: kept,
       links: colLinks.filter((l) => visibleLineage.has(l.source) && visibleLineage.has(l.target)),

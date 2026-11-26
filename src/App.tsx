@@ -187,6 +187,16 @@ function Explorer() {
   const navigate = useNavigate({ from: '/' });
   const pendingCenter = useRef<string | null>(null);
   const { graph, error, loading, reload } = useGraph();
+  // Surface assembly warnings in the graph view's console, once per distinct set.
+  const loggedWarnings = useRef('');
+  useEffect(() => {
+    const warnings = graph?.warnings ?? [];
+    if (warnings.length === 0) return;
+    const signature = warnings.join('\n');
+    if (signature === loggedWarnings.current) return;
+    loggedWarnings.current = signature;
+    for (const warning of warnings) console.warn(`[lineage] ${warning}`);
+  }, [graph]);
   const savedFilterSets = useFilterSets();
   const activeSet = useMemo(
     () => savedFilterSets.find((set) => set.id === filterSet) ?? null,
@@ -704,16 +714,6 @@ function Explorer() {
           {error && (
             <div className="banner error" role="alert">
               Could not load the lineage graph: {error}. Check the Quack server (it starts with `pnpm dev`) and the table and column names in shared/schema.ts.
-            </div>
-          )}
-          {!error && graph && graph.warnings.length > 0 && (
-            <div className="banner warning" role="status">
-              <strong>Some lineage rows were skipped.</strong>
-              <ul className="banner-list">
-                {graph.warnings.map((warning) => (
-                  <li key={warning}>{warning}</li>
-                ))}
-              </ul>
             </div>
           )}
           {!error && !loading && graph && graph.nodes.length === 0 && (
